@@ -1,0 +1,86 @@
+# deviceinfo for Xiaomi Redmi 6 Pro (sakura)
+# Ubuntu Touch 24.04 (Halium 10.0 / Android 10 base, arm64)
+#
+# Consumed by: https://gitlab.com/ubports/porting/community-ports/halium-generic-adaptation-build-tools
+# Every value below is justified in RESEARCH.md ("deviceinfo values and where they come from").
+# Keys not used by the build tools (deviceinfo_architecture, deviceinfo_build_number, ... from the
+# original request) are mapped here to the keys the tooling actually reads.
+
+##########
+# Basic device information
+##########
+
+deviceinfo_name="Redmi 6 Pro"
+deviceinfo_manufacturer="Xiaomi"
+deviceinfo_codename="sakura"
+
+# Architecture
+deviceinfo_arch="aarch64"
+deviceinfo_kernel_arch="arm64"
+
+# Halium / Ubuntu Touch release
+deviceinfo_halium_version="10"
+deviceinfo_ubuntu_touch_release="24.04-2.x"
+
+##########
+# Kernel
+##########
+
+# LineageOS 17.1 (Android 10) kernel for MSM8953, kept at 4.9.x
+deviceinfo_kernel_source="https://github.com/mahajant99/kernel_xiaomi_msm8953"
+deviceinfo_kernel_source_branch="lineage-17.1"
+
+# arch/arm64/configs/sakura_defconfig inside the kernel tree.
+# scripts/prepare-kernel-config.sh appends device/halium.config to this file before the build.
+deviceinfo_kernel_defconfig="sakura_defconfig"
+
+# LineageOS builds this kernel with clang; the build tools fetch the Halium 10
+# clang prebuilts (android10-gsi / r353983c) automatically.
+deviceinfo_kernel_clang_compile="true"
+
+# MSM8953 4.9 kernels emit an image with the qcom DTB appended to the gzip payload.
+deviceinfo_kernel_image_name="Image.gz-dtb"
+
+# Stock sakura cmdline (LineageOS BoardConfig.mk) plus the mandatory Halium bits.
+# console=tty0 is required for the Ubuntu Touch rootfs to boot; it must never be removed.
+# systempart is intentionally NOT set: this port boots the rootfs from /data/rootfs.img
+# (dual-boot install, see docs/INSTALL_ME.md).
+deviceinfo_kernel_cmdline="console=tty0 androidboot.hardware=qcom msm_rtb.filter=0x237 ehci-hcd.park=3 androidboot.bootdevice=7824900.sdhci earlycon=msm_hsl_uart,0x78af000 androidboot.usbconfigfs=true androidboot.selinux=permissive"
+
+##########
+# Boot image
+# Source: device/xiaomi/sakura/BoardConfig.mk (LineageOS 17.1 / 18.1)
+#   BOARD_KERNEL_BASE            := 0x80000000
+#   BOARD_KERNEL_PAGESIZE        := 2048
+#   BOARD_MKBOOTIMG_ARGS         := --ramdisk_offset 0x01000000 --tags_offset 0x00000100
+#   BOARD_BOOTIMAGE_PARTITION_SIZE := 67108864 (64 MiB)
+# sakura shipped with Android 8.1 and LineageOS builds it with header v0.
+##########
+
+deviceinfo_bootimg_header_version="0"
+deviceinfo_flash_pagesize="2048"
+deviceinfo_flash_offset_base="0x80000000"
+deviceinfo_flash_offset_kernel="0x00008000"
+deviceinfo_flash_offset_ramdisk="0x01000000"
+deviceinfo_flash_offset_second="0x00000000"
+deviceinfo_flash_offset_tags="0x00000100"
+deviceinfo_bootimg_partition_size="67108864"
+
+# Halium 10 generic boot ramdisk (non-dynparts: sakura has dedicated system/vendor partitions)
+deviceinfo_prebuilt_boot_ramdisk_source="https://github.com/halium/initramfs-tools-halium/releases/download/continuous/initrd.img-touch-arm64"
+deviceinfo_ramdisk_compression="gzip"
+
+##########
+# Rootfs
+##########
+
+# /data/rootfs.img is a freshly created ext4 image, so 4096 byte sectors are fine.
+deviceinfo_rootfs_image_sector_size="4096"
+
+# Upper bound used when sizing rootfs.img on the host. sakura's system partition is only
+# 3.0 GiB, which is why this port installs to /data instead of system-as-root.
+deviceinfo_system_partition_size="4096M"
+
+# Required for Ubuntu Touch 20.04+: kernel modules and device blobs live in an overlay
+# store inside the device tarball instead of the rootfs.
+deviceinfo_use_overlaystore="true"

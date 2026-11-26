@@ -1,0 +1,24 @@
+# Build outputs
+/build/
+/workdir/
+/out/
+/dist/
+/ota/
+/vendor/
+
+# Kernel / image artifacts
+*.img
+*.img.gz
+*.img.xz
+*.dtb
+*.dtbo
+*.ko
+*.tar.xz
+*.zip
+!installer/**/*.zip
+
+# Editor / OS noise
+.DS_Store
+*.swp
+*.log
+.ref/

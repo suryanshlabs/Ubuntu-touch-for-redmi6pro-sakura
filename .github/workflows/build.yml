@@ -1,0 +1,130 @@
+name: build-ubuntu-touch-sakura
+
+# Builds the Halium 10 kernel + boot image, assembles the flashable recovery zip and
+# publishes it. Every push builds; a tag (v*) or a manual run with release_tag also
+# creates a GitHub Release with the zip, its sha256 and its buildinfo attached.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Create a release with this tag (leave empty to only build)'
+        required: false
+        default: ''
+      port_version:
+        description: 'Port version embedded in the artifact name'
+        required: false
+        default: '0.1.0'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PORT_VERSION: ${{ inputs.port_version || '0.1.0' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 350
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          df -h /
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc bison build-essential ca-certificates cpio curl fakeroot flex git \
+            kmod libelf-dev libssl-dev libtinfo5 lz4 python2 python3 sudo unzip \
+            wget xz-utils pahole libbpf-dev zip android-sdk-libsparse-utils
+          # some kernel scripts still call `python`
+          sudo ln -sf /usr/bin/python2 /usr/bin/python
+          python --version || true
+
+      - name: Cache build-tools downloads (clang, gcc, kernel, mkbootimg)
+        uses: actions/cache@v4
+        with:
+          path: workdir/downloads
+          key: downloads-${{ hashFiles('deviceinfo', 'device/halium.config') }}
+          restore-keys: |
+            downloads-
+
+      - name: Build kernel and Halium boot image
+        run: ./build.sh
+
+      - name: Fetch Ubuntu Touch rootfs and Halium 10 GSI
+        run: ./scripts/fetch-prebuilts.sh
+
+      - name: Build rootfs.img
+        env:
+          COMPRESS: '1'
+        run: sudo -E ./scripts/make-rootfs-image.sh
+
+      - name: Assemble flashable zip
+        run: ./scripts/build-zip.sh
+
+      - name: Show artifacts
+        run: |
+          ls -lh out/ dist/
+          cat dist/*.buildinfo || true
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ubuntu-touch-sakura-${{ github.sha }}
+          path: |
+            dist/*.zip
+            dist/*.sha256
+            dist/*.buildinfo
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload boot image (small, useful for fastboot debugging)
+        uses: actions/upload-artifact@v4
+        with:
+          name: sakura-boot-${{ github.sha }}
+          path: out/boot.img
+          if-no-files-found: warn
+          retention-days: 30
+
+      # Tagged pushes create a versioned release; a normal push keeps a rolling
+      # "continuous-build" release updated with the newest zip.
+      - name: Publish release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.release_tag || 'continuous-build' }}
+          name: Ubuntu Touch 24.04 for Redmi 6 Pro - ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.release_tag || 'continuous build' }}
+          draft: false
+          prerelease: true
+          body: |
+            Ubuntu Touch 24.04 (Halium 10, arm64) for Xiaomi Redmi 6 Pro (`sakura`).
+
+            Build commit: `${{ github.sha }}`
+
+            **Status: untested build output.** No one has booted this image on hardware yet.
+            See `docs/INSTALL_ME.md` for prerequisites (unlocked bootloader, OrangeFox,
+            ext4 unencrypted `/data`) and the rollback steps.
+
+            * flash the `.zip` from OrangeFox / TWRP
+            * `boot.img` alone is also attached inside the zip under `partitions/`
+            * verify with the `.sha256` file
+          files: |
+            dist/*.zip
+            dist/*.sha256
+            dist/*.buildinfo
+          fail_on_unmatched_files: true

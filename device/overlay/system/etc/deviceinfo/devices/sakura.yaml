@@ -1,0 +1,24 @@
+# DeviceInfo configuration for Xiaomi Redmi 6 Pro (sakura)
+#
+# Installed to /etc/deviceinfo/devices/sakura.yaml inside the rootfs by
+# scripts/make-rootfs-image.sh (device overlay). The file name must be lowercase and match
+# the detected device name, otherwise deviceinfo falls back to default.yaml.
+#
+# Reference: https://docs.ubports.com/en/latest/porting/configure_test_fix/device_info
+
+sakura:
+  # 5.84" 1080x2280 IPS, 420 dpi -> xxhdpi-class phone UI
+  DeviceType: phone
+  GridUnit: 21
+  PrimaryOrientation: Portrait
+  SupportedOrientations:
+    - Portrait
+    - InvertedPortrait
+    - Landscape
+    - InvertedLandscape
+
+  # Rendering scale for QtWebEngine based apps on a 1080p panel
+  WebkitDpr: 2
+
+  # sakura has no hardware keyboard and no external display
+  HasKeyboard: false

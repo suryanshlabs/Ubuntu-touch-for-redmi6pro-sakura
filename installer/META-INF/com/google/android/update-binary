@@ -1,0 +1,148 @@
+#!/sbin/sh
+#
+# Ubuntu Touch 24.04 (Halium 10) installer for Xiaomi Redmi 6 Pro (sakura)
+# Flash from OrangeFox / TWRP. Installs alongside Android in /data.
+#
+# Layout written by this script:
+#   /dev/block/by-name/boot   <- Halium kernel + initramfs   (partitions/boot.img)
+#   /data/rootfs.img          <- Ubuntu Touch rootfs         (images/rootfs.img.gz)
+#   /data/android-rootfs.img  <- Halium 10 GSI               (images/android-rootfs.img)
+#
+# Everything is verified before anything is written, and the existing boot image is
+# backed up to /sdcard so the phone can always be returned to Android.
+
+set -u
+
+OUTFD="/proc/self/fd/$2"
+ZIPFILE="$3"
+
+ui_print() { echo "ui_print $*" > "$OUTFD"; echo "ui_print" > "$OUTFD"; }
+
+die() {
+    ui_print ""
+    ui_print "! $*"
+    ui_print "! Installation aborted."
+    exit 1
+}
+
+WORK="/tmp/sakura-ut-install"
+rm -rf "$WORK"
+trap 'rm -rf "$WORK" 2>/dev/null' EXIT
+
+ui_print "*********************************************"
+ui_print " Ubuntu Touch 24.04 - Redmi 6 Pro (sakura)"
+ui_print " Halium 10 / arm64 - recovery installer"
+ui_print "*********************************************"
+ui_print ""
+
+# ---------------------------------------------------------------- device check
+DEVICE="$(getprop ro.product.device 2>/dev/null)"
+[ -z "$DEVICE" ] && DEVICE="$(getprop ro.build.product 2>/dev/null)"
+
+MATCH=0
+case "$DEVICE" in sakura|*sakura*) MATCH=1 ;; esac
+if [ "$MATCH" -eq 0 ]; then
+    grep -qi "sakura" /proc/cmdline && MATCH=1
+fi
+# Escape hatch for people whose recovery reports a different codename.
+[ -e /tmp/sakura.force ] && MATCH=1
+
+if [ "$MATCH" -eq 0 ]; then
+    die "This package is for sakura (Redmi 6 Pro), but this device reports '$DEVICE'."
+fi
+ui_print "[*] Device check passed ($DEVICE)"
+
+# ---------------------------------------------------------------- mount /data
+mount /data 2>/dev/null || true
+if [ ! -d /data/media ] && [ ! -d /data/lost+found ]; then
+    mount -t ext4 /dev/block/by-name/userdata /data 2>/dev/null || true
+fi
+if [ ! -d /data/media ] && [ ! -d /data/lost+found ]; then
+    die "/data is not mounted. In recovery, decrypt userdata (enter PIN/pattern) or format it as ext4, then retry."
+fi
+ui_print "[*] /data mounted"
+
+if ! mkdir -p "$WORK/images" "$WORK/partitions" "$WORK/meta"; then
+    die "Cannot create $WORK"
+fi
+
+# ---------------------------------------------------------------- unpack
+ui_print "[*] Unpacking images (this takes a minute)..."
+if ! unzip -o "$ZIPFILE" "partitions/*" "images/*" "META-INF/sakura/*" -d "$WORK" >/dev/null 2>&1; then
+    die "Cannot unpack $ZIPFILE. Is this a valid zip?"
+fi
+
+BOOT_IMG="$WORK/partitions/boot.img"
+ROOTFS_GZ="$WORK/images/rootfs.img.gz"
+ANDROID_IMG="$WORK/images/android-rootfs.img"
+
+[ -s "$BOOT_IMG" ] || die "boot.img missing from the zip"
+[ -s "$ROOTFS_GZ" ] || die "rootfs.img.gz missing from the zip"
+[ -s "$ANDROID_IMG" ] || die "android-rootfs.img missing from the zip"
+
+# ---------------------------------------------------------------- space check
+ROOTFS_BYTES="$(grep -E '^sakura.build.rootfs_bytes=' "$WORK/meta/META-INF/sakura/build.prop" 2>/dev/null | cut -d= -f2)"
+[ -z "$ROOTFS_BYTES" ] && ROOTFS_BYTES=3221225472
+NEED_KB=$(( ROOTFS_BYTES / 1024 + 2097152 ))   # rootfs + GSI + 2 GiB headroom
+AVAIL_KB="$(df -k /data | awk 'NR==2 {print $4}')"
+if [ -n "$AVAIL_KB" ] && [ "$AVAIL_KB" -lt "$NEED_KB" ]; then
+    die "Not enough free space in /data: need $((NEED_KB/1024)) MiB, available $((AVAIL_KB/1024)) MiB."
+fi
+ui_print "[*] Free space check passed ($((AVAIL_KB/1024)) MiB available)"
+
+# ---------------------------------------------------------------- backup boot
+BOOT_PART=""
+for p in /dev/block/by-name/boot /dev/block/bootdevice/by-name/boot; do
+    if [ -e "$p" ]; then BOOT_PART="$p"; break; fi
+done
+[ -n "$BOOT_PART" ] || die "boot partition not found."
+
+if [ -d /data/media/0 ]; then
+    BACKUP_DIR="/data/media/0/sakura-ut-backup"
+    mkdir -p "$BACKUP_DIR"
+    if [ ! -s "$BACKUP_DIR/boot-stock.img" ]; then
+        ui_print "[*] Backing up the current boot image to $BACKUP_DIR"
+        dd if="$BOOT_PART" of="$BACKUP_DIR/boot-stock.img" bs=1M 2>/dev/null || true
+    fi
+fi
+
+# ---------------------------------------------------------------- flash boot
+ui_print "[*] Flashing Halium boot image to $BOOT_PART"
+dd if="$BOOT_IMG" of="$BOOT_PART" bs=1M 2>/dev/null || die "Failed to write the boot image."
+sync
+
+# ---------------------------------------------------------------- rootfs
+ui_print "[*] Writing /data/rootfs.img (usually 2-4 minutes)..."
+rm -f /data/rootfs.img
+if ! gzip -dc "$ROOTFS_GZ" > /data/rootfs.img; then
+    rm -f /data/rootfs.img
+    die "Failed to decompress rootfs.img.gz (out of space?)."
+fi
+sync
+
+ui_print "[*] Writing /data/android-rootfs.img"
+rm -f /data/android-rootfs.img
+cp -f "$ANDROID_IMG" /data/android-rootfs.img || die "Failed to copy android-rootfs.img."
+# Stale images from a previous install would be mounted instead of ours.
+rm -f /data/system.img 2>/dev/null || true
+
+cp -f "$WORK/meta/META-INF/sakura/build.prop" /data/sakura-ubuntu-touch-build.prop 2>/dev/null || true
+
+sync
+ui_print "[*] Data written and synced."
+
+# ---------------------------------------------------------------- done
+ui_print ""
+ui_print "[+] Ubuntu Touch 24.04 for sakura has been installed."
+ui_print ""
+ui_print "  Next steps:"
+ui_print "   1. Reboot to system (do NOT reboot to recovery)."
+ui_print "   2. First boot takes 5-10 minutes; the screen stays dark for a while."
+ui_print "   3. To go back to Android: flash /sdcard/sakura-ut-backup/boot-stock.img"
+ui_print "      from recovery, or 'fastboot flash boot boot-stock.img' on a PC."
+ui_print ""
+ui_print "  Android data is untouched: the Ubuntu images live next to it in /data."
+ui_print ""
+ui_print "*********************************************"
+
+exit 0

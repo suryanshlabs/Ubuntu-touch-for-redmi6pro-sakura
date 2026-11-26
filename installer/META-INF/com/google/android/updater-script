@@ -1,0 +1,11 @@
+# updater-script for the sakura Ubuntu Touch installer.
+#
+# OrangeFox / TWRP only require this file to exist; all of the logic lives in
+# META-INF/com/google/android/update-binary (a shell script).
+#
+# Device:            sakura (Xiaomi Redmi 6 Pro)
+# Distribution:      Ubuntu Touch 24.04 - Halium 10
+# Install target:    /data (dual-boot with Android)
+
+ui_print("Ubuntu Touch 24.04 (sakura)");
+ui_print("  installing via update-binary...");

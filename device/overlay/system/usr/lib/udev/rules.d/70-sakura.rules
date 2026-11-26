@@ -1,0 +1,47 @@
+# udev rules for Xiaomi Redmi 6 Pro (sakura), MSM8953 / Adreno 506
+#
+# Installed to /usr/lib/udev/rules.d/70-sakura.rules inside the rootfs by the device
+# overlay. Halium exposes the Android drivers through /dev, and the Ubuntu Touch services
+# (Mir, PulseAudio, sensorfw, lomiri-system-settings) need non-root access to them.
+
+# --- Graphics (Adreno 506 via libhybris)
+KERNEL=="kgsl-3d0", MODE="0660", GROUP="graphics"
+SUBSYSTEM=="graphics", KERNEL=="kgsl*", MODE="0660", GROUP="graphics"
+KERNEL=="msm_vidc*", MODE="0660", GROUP="video"
+
+# --- Display / framebuffer
+SUBSYSTEM=="graphics", KERNEL=="fb*", MODE="0660", GROUP="video"
+
+# --- Camera (two sensors: imx486 main, ov5675 front)
+SUBSYSTEM=="video4linux", MODE="0660", GROUP="video"
+KERNEL=="video*", MODE="0660", GROUP="video"
+SUBSYSTEM=="media", MODE="0660", GROUP="video"
+
+# --- Audio (WCD9335 codec, msm-pcm)
+SUBSYSTEM=="sound", KERNEL=="card*", MODE="0660", GROUP="audio"
+KERNEL=="msm*_pcm*", MODE="0660", GROUP="audio"
+KERNEL=="controlC*", MODE="0660", GROUP="audio"
+KERNEL=="pcmC*", MODE="0660", GROUP="audio"
+
+# --- Touchscreen (ft5406 / novatek, depends on the panel variant)
+SUBSYSTEM=="input", KERNEL=="event*", MODE="0660", GROUP="input"
+SUBSYSTEM=="input", KERNEL=="input*", MODE="0660", GROUP="input"
+
+# --- Sensors (accelerometer, proximity, light via SSC)
+SUBSYSTEM=="iio", MODE="0660", GROUP="plugdev"
+KERNEL=="sensors*", MODE="0660", GROUP="plugdev"
+
+# --- Fingerprint (FPC1020 / Goodix, selected by the Android HAL)
+SUBSYSTEM=="fpc1020", MODE="0660", GROUP="plugdev"
+
+# --- Vibration motor (qcom vibrator)
+SUBSYSTEM=="leds", KERNEL=="vibrator", MODE="0660", GROUP="input"
+SUBSYSTEM=="timed_output", KERNEL=="vibrator", MODE="0660", GROUP="input"
+
+# --- Modem / telephony control channels
+KERNEL=="smd*", MODE="0660", GROUP="radio"
+KERNEL=="rmnet*", MODE="0660", GROUP="radio"
+
+# --- Wi-Fi (qcacld) and Bluetooth (btqsoc)
+SUBSYSTEM=="net", KERNEL=="wlan*", MODE="0660", GROUP="netdev"
+KERNEL=="bt_rfkill", MODE="0660", GROUP="netdev"

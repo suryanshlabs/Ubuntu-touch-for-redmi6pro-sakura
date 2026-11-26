@@ -1,0 +1,31 @@
+# GitLab CI configuration (optional).
+#
+# This project builds on GitHub Actions (.github/workflows/build.yml). This file exists so
+# the port can also be built by the UBports shared pipeline if it is ever mirrored to
+# GitLab: it only needs the generic adaptation tools and the deviceinfo in this repo.
+#
+# The shared pipeline produces boot.img + device_sakura.tar.xz; it does not produce the
+# flashable zip (that step is GitHub-specific, see .github/workflows/build.yml).
+
+include:
+  - https://gitlab.com/ubports/porting/community-ports/halium-generic-adaptation-build-tools/-/raw/main/gsi-port-ci.yml
+
+variables:
+  ADAPTATION_TOOLS_BRANCH: main
+  # Ubuntu Touch release channel used by the "flashable" job
+  UTPORTS_OTA_CHANNEL: "24.04-2.x/arm64/android9plus/devel"
+
+build:
+  stage: build
+  script:
+    - apt-get update
+    - >-
+      apt-get install -y --no-install-recommends
+      bc bison build-essential ca-certificates cpio curl fakeroot flex git kmod
+      libelf-dev libssl-dev libtinfo5 lz4 python2 python3 sudo unzip wget xz-utils
+      pahole libbpf-dev
+    - ln -sf /usr/bin/python2 /usr/bin/python
+    - ./build.sh
+  artifacts:
+    paths:
+      - out/*
