@@ -6,7 +6,29 @@ time · **[blocked]** needs something outside the repository.
 
 ---
 
-## 2026-11-26 (latest) — the kernel builds; the device tarball did not
+## 2026-11-26 (latest) — kernel, tarball and rootfs image all build
+
+Run `45882123129` reached and passed the two steps that had never run before:
+
+* **kernel + boot image + device tarball: success** in 12.5 minutes with clang, and the
+  GCC fallback step was skipped, so the `overlay/` fix closed that failure for good
+* **rootfs image: built** — 4.0 GiB ext4 image, gzipped to 930 MiB with pigz
+
+The step was still reported as failed, with `##[error]Process completed with exit code 1`
+after the script's own `==> rootfs image ready` line. Cause: bash takes the exit status of
+the last command run in an EXIT trap as the script's exit status, and the cleanup helper
+ended in `[ -n "$XDIR" ] && rm -rf "$XDIR"`, which is status 1 when the loop-mount path was
+used (so `XDIR` stays empty). The build had succeeded; the cleanup lied about it.
+
+**Fix:** the cleanup function now ends in `return 0` with `|| true` on every command. The
+same trap pattern in the installer got the same treatment, where it could have turned a
+good install into "Installation aborted".
+
+**[open]** Still unproven: `scripts/build-zip.sh`, the artifact upload and the release.
+
+---
+
+## 2026-11-26 — the kernel builds; the device tarball did not
 
 Run `45879071056` on the fixed tree got much further: **the kernel compiled and linked
 successfully with clang 9 in 13 minutes** (`Image.gz-dtb` + all modules), so the toolchain

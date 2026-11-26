@@ -46,10 +46,18 @@ MKFS_OPTS=(-q -F -L ubuntu-rootfs -O ^metadata_csum,^64bit)
 
 MNT="$(mktemp -d /tmp/sakura-rootfs.XXXXXX)"
 XDIR=""
+# bash takes the exit status of the last command run in an EXIT trap as the script's
+# exit status. So cleanup saves the real status first and returns it: without that, a
+# failing last cleanup command turns a good build into "failed", and a blanket
+# `return 0` would turn a real build failure into "success".
 cleanup() {
+    local rc=$?
     umount "$MNT" 2>/dev/null || true
     rmdir "$MNT" 2>/dev/null || true
-    [ -n "$XDIR" ] && rm -rf "$XDIR"
+    if [ -n "${XDIR:-}" ]; then
+        rm -rf "$XDIR" || true
+    fi
+    return "$rc"
 }
 trap cleanup EXIT
 

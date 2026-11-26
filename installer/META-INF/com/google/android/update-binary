@@ -67,7 +67,15 @@ rm -rf "$WORK"
 if ! mkdir -p "$WORK/images" "$WORK/partitions" "$WORK/meta"; then
     die "Cannot create $WORK"
 fi
-trap 'rm -rf "$WORK" 2>/dev/null' EXIT
+# The exit status of the last command in an EXIT trap becomes the script's exit status.
+# Save the real status and return it, so a failing cleanup cannot turn a good install into
+# "aborted" (and a real failure is still reported).
+cleanup() {
+    rc=$?
+    rm -rf "$WORK" 2>/dev/null || true
+    return "$rc"
+}
+trap cleanup EXIT
 
 # ---------------------------------------------------------------- unpack
 ui_print "[*] Unpacking images into /data (this takes a minute)..."
