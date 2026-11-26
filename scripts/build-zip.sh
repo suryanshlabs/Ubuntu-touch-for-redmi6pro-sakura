@@ -27,6 +27,14 @@ DEVICE="sakura"
 UT_RELEASE="ut24.04"
 HALIUM="halium10"
 
+# Must match the boot partition size in the Android device tree
+# (BOARD_BOOTIMAGE_PARTITION_SIZE := 67108864). The image is padded to this size so the
+# recovery can dd it straight onto the partition without leaving old bytes behind.
+BOOT_PARTITION_SIZE="${BOOT_PARTITION_SIZE:-67108864}"
+
+# GitHub refuses release assets larger than 2 GiB.
+MAX_ZIP_BYTES="${MAX_ZIP_BYTES:-2000000000}"
+
 # shellcheck source=/dev/null
 source "$ROOT/deviceinfo"
 
@@ -45,7 +53,7 @@ DEVICE_TAR="${DEVICE_TAR:-$OUT_DIR/device_sakura.tar.xz}"
 
 fail() { echo "build-zip: $*" >&2; exit 1; }
 
-# --- boot.img: prefer out/, fall back to the build workdir, last resort the device tarball
+# --- boot.img: prefer out/, fall back to the build workdir
 BOOT_IMG="${BOOT_IMG:-}"
 if [ -z "$BOOT_IMG" ]; then
     for candidate in "$OUT_DIR/boot.img" "$WORKDIR/tmp/partitions/boot.img"; do
@@ -71,14 +79,26 @@ cp -f "$ROOT/installer/META-INF/com/google/android/updater-script" \
 chmod 755 "$STAGE/META-INF/com/google/android/update-binary"
 
 cp -f "$BOOT_IMG" "$STAGE/partitions/boot.img"
+BOOT_BYTES="$(stat -c%s "$STAGE/partitions/boot.img")"
+if [ "$BOOT_BYTES" -lt "$BOOT_PARTITION_SIZE" ]; then
+    echo "==> Padding boot.img from $BOOT_BYTES to $BOOT_PARTITION_SIZE bytes (64 MiB partition)"
+    truncate -s "$BOOT_PARTITION_SIZE" "$STAGE/partitions/boot.img"
+elif [ "$BOOT_BYTES" -gt "$BOOT_PARTITION_SIZE" ]; then
+    fail "boot.img is $BOOT_BYTES bytes, larger than the ${BOOT_PARTITION_SIZE} byte partition"
+fi
 
 echo "==> Unpacking Halium 10 GSI"
 tar -xJf "$GSI_TAR" -C "$STAGE/images"
-ANDROID_ROOTFS="$(find "$STAGE/images" -maxdepth 2 -type f \( -name 'android-rootfs.img' -o -name 'system.img' \) | head -n1)"
+# The CI artifact keeps the image at system/var/lib/lxc/android/android-rootfs.img;
+# older artifacts use system.img at the top level. Search the whole tree.
+ANDROID_ROOTFS="$(find "$STAGE/images" -type f \( -name 'android-rootfs.img' -o -name 'system.img' \) | head -n1)"
 [ -n "$ANDROID_ROOTFS" ] || fail "no android-rootfs.img/system.img inside $GSI_TAR"
-if [ "$(basename "$ANDROID_ROOTFS")" != "android-rootfs.img" ]; then
-    mv "$ANDROID_ROOTFS" "$STAGE/images/android-rootfs.img"
-fi
+mv -f "$ANDROID_ROOTFS" "$STAGE/images/android-rootfs.img"
+# Drop the rest of the GSI tree (partitions/, system/var/lib/lxc/...): the installer only
+# needs the image itself.
+find "$STAGE/images" -mindepth 1 -maxdepth 1 ! -name 'android-rootfs.img' -exec rm -rf {} +
+ANDROID_BYTES="$(stat -c%s "$STAGE/images/android-rootfs.img")"
+echo "    android-rootfs.img: $((ANDROID_BYTES / 1024 / 1024)) MiB"
 
 cp -f "$ROOTFS_GZ" "$STAGE/images/rootfs.img.gz"
 cp -f "$DEVICE_TAR" "$STAGE/device_${DEVICE}.tar.xz"
@@ -96,14 +116,19 @@ sakura.build.commit=${GIT_SHORT}${GIT_DIRTY}
 sakura.build.codename=${deviceinfo_codename}
 sakura.build.halium_version=${deviceinfo_halium_version}
 sakura.build.rootfs_bytes=${ROOTFS_BYTES}
+sakura.build.android_rootfs_bytes=${ANDROID_BYTES}
+sakura.build.bootimg_bytes=${BOOT_PARTITION_SIZE}
 sakura.build.installer=${ZIP_NAME}
 MANIFEST
 
 mkdir -p "$DIST_DIR"
 rm -f "$TARGET"
-echo "==> Creating zip (store-only for the images, deflate for the rest)"
+echo "==> Creating zip"
+# Already-compressed rootfs is stored, the raw Android image is deflated, the small
+# metadata is deflated hard.
 (cd "$STAGE" && zip -r -q -9 "$TARGET" META-INF device_"${DEVICE}".tar.xz partitions)
-(cd "$STAGE" && zip -r -q -0 "$TARGET" images)
+(cd "$STAGE" && zip -r -q -0 "$TARGET" images/rootfs.img.gz)
+(cd "$STAGE" && zip -r -q -6 "$TARGET" images/android-rootfs.img)
 
 SHA="$(sha256sum "$TARGET" | cut -d' ' -f1)"
 SIZE="$(stat -c%s "$TARGET")"
@@ -120,8 +145,15 @@ commit        $GIT_SHORT$GIT_DIRTY
 built         $BUILD_STAMP
 bootimg       $(basename "$BOOT_IMG")
 rootfs_bytes  $ROOTFS_BYTES
+android_bytes $ANDROID_BYTES
 INFO
 
 echo "==> Done"
 ls -lh "$TARGET" "$TARGET.sha256" "${TARGET%.zip}.buildinfo"
 echo "sha256: $SHA"
+
+if [ "$SIZE" -gt "$MAX_ZIP_BYTES" ]; then
+    echo "build-zip: WARNING: the zip is $((SIZE / 1024 / 1024)) MiB, above the $((MAX_ZIP_BYTES / 1024 / 1024)) MiB" >&2
+    echo "build-zip: WARNING: GitHub release asset limit, so the GitHub Release upload may fail." >&2
+    echo "build-zip: WARNING: the workflow artifact is still usable. Shrink with ROOTFS_SIZE=3G." >&2
+fi

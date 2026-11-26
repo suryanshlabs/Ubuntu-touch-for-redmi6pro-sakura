@@ -134,13 +134,15 @@ device-tree/Halium-CI keys; the table maps them.
 | `deviceinfo_codename` | ✔ | sakura | `ro.product.name` |
 | `deviceinfo_device_type` | — (runtime YAML key) | `DeviceType: phone` | `device/overlay/.../sakura.yaml` |
 | `deviceinfo_kernel_codename` | — (not a key) | — | |
-| `deviceinfo_architecture` | `deviceinfo_arch` | `aarch64` | SoC |
-| — | `deviceinfo_kernel_arch` | `arm64` | SoC |
+| `deviceinfo_architecture` | `deviceinfo_arch` | `aarch64` | SoC. **Must be `aarch64`, not `arm64`**: the tools build `CROSS_COMPILE=<arch>-linux-android-` and `CLANG_TRIPLE=<arch>-linux-gnu-` from it, and only the `aarch64-` prefixed toolchains exist (see `docs/PORTING_LOG.md`) |
+| — | `deviceinfo_kernel_arch` | `aarch64` | SoC, same reason |
 | `deviceinfo_halium_version` | ✔ | `10` | §2 |
 | `deviceinfo_ubuntu_touch_release` | ✔ | `24.04-2.x` | §3 |
 | `deviceinfo_kernel_defconfig` | ✔ | `sakura_defconfig` | `TARGET_KERNEL_CONFIG` in `BoardConfig.mk` |
 | `deviceinfo_kernel_header_version` | `deviceinfo_bootimg_header_version` | `0` | Android 8.1 launch, LineageOS sets no header version |
 | `deviceinfo_bootimg_prebuilt_dtb` | omitted | — | MSM8953 4.9 emits `Image.gz-dtb` with the DTB appended |
+| — | `deviceinfo_bootimg_os_version` | `10` | required: `make-bootimage.sh` always passes `--os_version`, and an empty value makes argparse fail |
+| — | `deviceinfo_bootimg_os_patch_level` | `2021-07-01` | `VENDOR_SECURITY_PATCH` in `BoardConfig.mk` |
 | `deviceinfo_kernel_cmdline` | ✔ | stock LineageOS cmdline + `console=tty0` + `androidboot.selinux=permissive` | `BoardConfig.mk` + Halium docs (`console=tty0` is mandatory) |
 | `deviceinfo_kernel_clang_compile` | ✔ | `true` | LineageOS builds this kernel with clang |
 | `deviceinfo_build_number`, `deviceinfo_operating_system`, `deviceinfo_security_patch` | — | not used by the build tools | |
@@ -149,7 +151,7 @@ device-tree/Halium-CI keys; the table maps them.
 | — | `deviceinfo_flash_offset_kernel` | `0x00008000` | default, base+0x8000 = `0x80008000` |
 | — | `deviceinfo_flash_offset_ramdisk` | `0x01000000` | `--ramdisk_offset` |
 | — | `deviceinfo_flash_offset_tags` | `0x00000100` | `--tags_offset` |
-| — | `deviceinfo_bootimg_partition_size` | `67108864` | `BOARD_BOOTIMAGE_PARTITION_SIZE` |
+| — | `deviceinfo_bootimg_partition_size` | **not set** | setting it makes `make-bootimage.sh` call `avbtool` without a key; `scripts/build-zip.sh` pads boot.img to the 64 MiB partition itself |
 | — | `deviceinfo_prebuilt_boot_ramdisk_source` | Halium `continuous` arm64 initrd | non-dynparts, see §7 |
 | — | `deviceinfo_rootfs_image_sector_size` | `4096` | eMMC logical sector size |
 | — | `deviceinfo_system_partition_size` | `4096M` | rootfs image size cap (system is only 3.0 GiB, hence /data install) |
@@ -183,6 +185,11 @@ Halium 10 GSIs are system-as-root, so the file must be named `android-rootfs.img
 (`halium-install -s` does the same rename). `halium-install`'s own layout is the reference:
 `rootfs.img` + `system.img`, renamed to `android-rootfs.img` for system-as-root.
 
+The CI artifact does not keep the image at the top of the tarball: `halium_halium_arm64.tar.xz`
+contains `system/var/lib/lxc/android/android-rootfs.img` (537 MiB uncompressed) plus a
+`partitions/` directory. `scripts/build-zip.sh` searches the whole extracted tree and hoists
+the image to `images/android-rootfs.img`.
+
 ## 8. Size, storage and RAM
 
 | Item | Size |
@@ -192,7 +199,7 @@ Halium 10 GSIs are system-as-root, so the file must be named `android-rootfs.img
 | `out/device_sakura.tar.xz` | ~25-35 MB |
 | `out/boot.img` | ~18-22 MB |
 | rootfs tarball download | ~927 MiB |
-| Halium 10 GSI download | ~137 MiB |
+| Halium 10 GSI download | ~137 MiB `.tar.xz` (contains the 537 MiB `android-rootfs.img`) |
 | `out/rootfs.img` (4 GiB filesystem) | ~2.3-2.6 GiB used |
 | `out/rootfs.img.gz` | ~800 MiB-1.1 GiB |
 | `dist/*.zip` | ~1.0-1.3 GiB |

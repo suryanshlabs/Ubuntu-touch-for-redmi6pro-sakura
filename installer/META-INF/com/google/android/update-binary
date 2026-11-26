@@ -1,4 +1,4 @@
-#!/sbin/sh
+#!/bin/sh
 #
 # Ubuntu Touch 24.04 (Halium 10) installer for Xiaomi Redmi 6 Pro (sakura)
 # Flash from OrangeFox / TWRP. Installs alongside Android in /data.
@@ -10,6 +10,10 @@
 #
 # Everything is verified before anything is written, and the existing boot image is
 # backed up to /sdcard so the phone can always be returned to Android.
+#
+# NOTE: the zip is unpacked into /data, never into /tmp. On this phone /tmp is a tmpfs
+# of a few hundred MiB, while the payload is ~2 GiB, so unpacking to /tmp always fails
+# with "No space left on device".
 
 set -u
 
@@ -24,10 +28,6 @@ die() {
     ui_print "! Installation aborted."
     exit 1
 }
-
-WORK="/tmp/sakura-ut-install"
-rm -rf "$WORK"
-trap 'rm -rf "$WORK" 2>/dev/null' EXIT
 
 ui_print "*********************************************"
 ui_print " Ubuntu Touch 24.04 - Redmi 6 Pro (sakura)"
@@ -62,14 +62,17 @@ if [ ! -d /data/media ] && [ ! -d /data/lost+found ]; then
 fi
 ui_print "[*] /data mounted"
 
+WORK="/data/sakura-ut-install"
+rm -rf "$WORK"
 if ! mkdir -p "$WORK/images" "$WORK/partitions" "$WORK/meta"; then
     die "Cannot create $WORK"
 fi
+trap 'rm -rf "$WORK" 2>/dev/null' EXIT
 
 # ---------------------------------------------------------------- unpack
-ui_print "[*] Unpacking images (this takes a minute)..."
+ui_print "[*] Unpacking images into /data (this takes a minute)..."
 if ! unzip -o "$ZIPFILE" "partitions/*" "images/*" "META-INF/sakura/*" -d "$WORK" >/dev/null 2>&1; then
-    die "Cannot unpack $ZIPFILE. Is this a valid zip?"
+    die "Cannot unpack $ZIPFILE. Is this a valid zip, and is there room in /data?"
 fi
 
 BOOT_IMG="$WORK/partitions/boot.img"
@@ -81,9 +84,13 @@ ANDROID_IMG="$WORK/images/android-rootfs.img"
 [ -s "$ANDROID_IMG" ] || die "android-rootfs.img missing from the zip"
 
 # ---------------------------------------------------------------- space check
-ROOTFS_BYTES="$(grep -E '^sakura.build.rootfs_bytes=' "$WORK/meta/META-INF/sakura/build.prop" 2>/dev/null | cut -d= -f2)"
+BUILD_PROP="$WORK/meta/META-INF/sakura/build.prop"
+ROOTFS_BYTES="$(sed -n 's/^sakura\.build\.rootfs_bytes=//p' "$BUILD_PROP" 2>/dev/null)"
 [ -z "$ROOTFS_BYTES" ] && ROOTFS_BYTES=3221225472
-NEED_KB=$(( ROOTFS_BYTES / 1024 + 2097152 ))   # rootfs + GSI + 2 GiB headroom
+ANDROID_BYTES="$(sed -n 's/^sakura\.build\.android_rootfs_bytes=//p' "$BUILD_PROP" 2>/dev/null)"
+[ -z "$ANDROID_BYTES" ] && ANDROID_BYTES=1073741824
+# rootfs + Android image + the unpacked copies now in $WORK + 1 GiB headroom
+NEED_KB=$(( (ROOTFS_BYTES + ANDROID_BYTES * 2) / 1024 + 1048576 ))
 AVAIL_KB="$(df -k /data | awk 'NR==2 {print $4}')"
 if [ -n "$AVAIL_KB" ] && [ "$AVAIL_KB" -lt "$NEED_KB" ]; then
     die "Not enough free space in /data: need $((NEED_KB/1024)) MiB, available $((AVAIL_KB/1024)) MiB."
@@ -126,7 +133,7 @@ cp -f "$ANDROID_IMG" /data/android-rootfs.img || die "Failed to copy android-roo
 # Stale images from a previous install would be mounted instead of ours.
 rm -f /data/system.img 2>/dev/null || true
 
-cp -f "$WORK/meta/META-INF/sakura/build.prop" /data/sakura-ubuntu-touch-build.prop 2>/dev/null || true
+cp -f "$BUILD_PROP" /data/sakura-ubuntu-touch-build.prop 2>/dev/null || true
 
 sync
 ui_print "[*] Data written and synced."

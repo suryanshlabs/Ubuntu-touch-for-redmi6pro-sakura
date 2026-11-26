@@ -46,14 +46,18 @@ git push origin main                        # build only -> workflow artifacts
 git tag v0.1.0 && git push origin v0.1.0    # build + GitHub Release
 ```
 
-`.github/workflows/build.yml` installs the dependencies, runs `./build.sh` (kernel + boot
-image), downloads the UT rootfs and the Halium 10 GSI, builds `rootfs.img`, and packages
-`dist/sakura-ut24.04-halium10-v*.zip` together with its `.sha256` and `.buildinfo`.
+`.github/workflows/build.yml` installs the dependencies, runs `./scripts/preflight.sh`
+(seconds; validates `deviceinfo`, the download URLs and every script), runs `./build.sh`
+(kernel + boot image), downloads the UT rootfs and the Halium 10 GSI, builds `rootfs.img`,
+and packages `dist/sakura-ut24.04-halium10-v*.zip` together with its `.sha256` and
+`.buildinfo`. If the clang toolchain cannot build the kernel, the workflow retries the
+build with the GCC 4.9 prebuilts instead of failing.
 
 Local build, with the exact apt packages and the expected output of each step:
 [docs/BUILD_ME.md](docs/BUILD_ME.md).
 
 ```bash
+./scripts/preflight.sh                  # validate config/URLs/scripts first
 ./build.sh                              # kernel + boot.img + device tarball
 ./scripts/fetch-prebuilts.sh            # rootfs (927 MiB) + Halium 10 GSI (137 MiB)
 sudo -E ./scripts/make-rootfs-image.sh  # ext4 rootfs image + device overlay
@@ -105,6 +109,7 @@ has run and someone flashes it.
 ├── proprietary/README.md         vendor blobs: where they come from, how to extract
 ├── installer/                    recovery installer (update-binary + updater-script)
 ├── scripts/
+│   ├── preflight.sh
 │   ├── prepare-kernel-config.sh
 │   ├── fetch-prebuilts.sh
 │   ├── make-rootfs-image.sh

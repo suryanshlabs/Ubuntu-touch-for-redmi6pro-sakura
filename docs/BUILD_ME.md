@@ -26,6 +26,10 @@ mkbootimg, kernel source) and compiles the kernel.
 5. runs `./scripts/build-zip.sh` (flashable zip)
 6. uploads the zip as a workflow artifact; on a `v*` tag it also creates a GitHub Release
 
+`./scripts/preflight.sh` runs first and fails in seconds if a `deviceinfo` key, a download
+URL or a script is broken. If the clang toolchain cannot build this kernel, the workflow
+automatically retries the build with the GCC 4.9 prebuilts (`KERNEL_GCC=1 ./build.sh`).
+
 To trigger it:
 
 ```bash
@@ -73,6 +77,7 @@ cd Ubuntu-touch-for-redmi6pro-sakura
 ### 3. Build the kernel and the boot image
 
 ```bash
+./scripts/preflight.sh   # seconds; validates deviceinfo, URLs, script syntax
 ./build.sh
 ```
 
@@ -193,6 +198,9 @@ Expected: `pagesize: 2048`, `kernel load address: 0x80008000`,
 
 | Symptom | Cause / fix |
 | --- | --- |
+| `Cannot use CONFIG_CC_STACKPROTECTOR_STRONG: -fstack-protector-strong not supported by compiler` | the toolchain prefix is wrong, not the compiler. `deviceinfo_arch` must be `aarch64`; `arm64` makes CROSS_COMPILE/CLANG_TRIPLE point at nonexistent binaries and the host `ld` is used instead. See `docs/PORTING_LOG.md` |
+| `argument --os_version: expected one argument` | `deviceinfo_bootimg_os_version` / `deviceinfo_bootimg_os_patch_level` are empty; `make-bootimage.sh` always passes them |
+| `preflight: N problem(s) found` | run `./scripts/preflight.sh` on its own; it names the broken key, URL or script |
 | `No rule to make target 'halium.config'` | you put `halium.config` in `deviceinfo_kernel_defconfig`; this project merges the fragment instead — remove it from `deviceinfo` |
 | `clang: error: unknown argument` / `-Werror` failures | kernel built with a newer host compiler; always use the prebuilt clang from `workdir/downloads`, never the distro clang |
 | `libtinfo.so.5: cannot open shared object file` | `sudo apt install libtinfo5` (22.04 only) |

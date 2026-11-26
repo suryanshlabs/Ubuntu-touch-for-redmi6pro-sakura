@@ -3,8 +3,9 @@
 # Merge device/halium.config into the kernel's sakura_defconfig.
 #
 # The upstream build tools run `make <defconfig>` and know nothing about extra config
-# fragments, so the fragment has to live inside the defconfig file itself. This script is
-# idempotent: the fragment is wrapped in marker comments and replaced on every run.
+# fragments, so the fragment has to live inside the defconfig file itself. This script
+# is idempotent: the fragment is always the last block of the file and is replaced
+# (not appended twice) on every run, with no leftover blank lines.
 #
 # Usage: scripts/prepare-kernel-config.sh [build-dir]
 #
@@ -17,6 +18,7 @@ FRAGMENT="$ROOT/device/halium.config"
 # shellcheck source=/dev/null
 source "$ROOT/deviceinfo"
 
+# The build tools clone into <downloads>/<basename of kernel_source> (minus .git).
 KERNEL_DIR_NAME="$(basename "${deviceinfo_kernel_source}")"
 KERNEL_DIR_NAME="${KERNEL_DIR_NAME%.git}"
 KERNEL_DIR="$BUILD_DIR/downloads/$KERNEL_DIR_NAME"
@@ -31,10 +33,16 @@ fi
 MARK_BEGIN="# >>> ubuntu-touch-sakura halium.config >>>"
 MARK_END="# <<< ubuntu-touch-sakura halium.config <<<"
 
-# Drop a previously injected block, if present.
+# Drop a previously injected block. It is always the tail of the file, so truncate from
+# the marker onwards (walking back over the blank separator line) instead of relying on
+# a sed range, which would leave one more blank line behind on every run.
 if grep -qF "$MARK_BEGIN" "$DEFCONFIG"; then
-    sed -i.bak "/^${MARK_BEGIN}$/,/^${MARK_END}$/d" "$DEFCONFIG"
-    rm -f "$DEFCONFIG.bak"
+    LINE="$(grep -nF "$MARK_BEGIN" "$DEFCONFIG" | head -n1 | cut -d: -f1)"
+    START="$LINE"
+    while [ "$START" -gt 1 ] && [ -z "$(sed -n "$((START - 1))p" "$DEFCONFIG")" ]; do
+        START=$((START - 1))
+    done
+    sed -i "${START},\$d" "$DEFCONFIG"
 fi
 
 {
@@ -48,8 +56,9 @@ fi
 echo "==> Merged $(grep -cvE '^\s*(#|$)' "$FRAGMENT") config options into $DEFCONFIG"
 
 # Sanity check: the options Halium cannot boot without.
-for opt in CONFIG_ANDROID_BINDER_IPC CONFIG_SECURITY_SELINUX CONFIG_CONFIGFS_FS; do
-    if ! grep -q "^${opt}=" "$DEFCONFIG"; then
-        echo "prepare-kernel-config: warning: $opt missing from the merged defconfig" >&2
+for opt in CONFIG_ANDROID_BINDER_IPC CONFIG_SECURITY_SELINUX CONFIG_CONFIGFS_FS \
+           CONFIG_DEVTMPFS CONFIG_OVERLAY_FS CONFIG_UTS_NS CONFIG_PID_NS; do
+    if ! grep -q "^${opt}=y" "$DEFCONFIG"; then
+        echo "prepare-kernel-config: warning: $opt is not enabled after the merge" >&2
     fi
 done

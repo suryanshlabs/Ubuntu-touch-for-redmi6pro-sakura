@@ -38,22 +38,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Free up disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-                      /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
-          df -h /
+      - name: Show disk space
+        run: df -h /
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             bc bison build-essential ca-certificates cpio curl fakeroot flex git \
-            kmod libelf-dev libssl-dev libtinfo5 lz4 python2 python3 sudo unzip \
+            kmod libelf-dev libssl-dev libtinfo5 lz4 pigz python2 python3 sudo unzip \
             wget xz-utils pahole libbpf-dev zip android-sdk-libsparse-utils
           # some kernel scripts still call `python`
           sudo ln -sf /usr/bin/python2 /usr/bin/python
           python --version || true
+
+      # Fails in seconds instead of an hour if deviceinfo, a URL or a script is broken.
+      - name: Preflight checks
+        run: ./scripts/preflight.sh
 
       - name: Cache build-tools downloads (clang, gcc, kernel, mkbootimg)
         uses: actions/cache@v4
@@ -63,8 +64,19 @@ jobs:
           restore-keys: |
             downloads-
 
-      - name: Build kernel and Halium boot image
+      # The LineageOS 17.1 tree is normally built with clang. If this toolchain cannot
+      # build it, the next step retries the same build with the GCC 4.9 prebuilts rather
+      # than failing the run.
+      - name: Build kernel and Halium boot image (clang)
+        id: build_clang
+        continue-on-error: true
         run: ./build.sh
+
+      - name: Build kernel and Halium boot image (GCC 4.9 fallback)
+        if: steps.build_clang.outcome == 'failure'
+        run: |
+          echo "clang build failed, retrying with the GCC 4.9 prebuilts" | tee -a "$GITHUB_STEP_SUMMARY"
+          KERNEL_GCC=1 ./build.sh
 
       - name: Fetch Ubuntu Touch rootfs and Halium 10 GSI
         run: ./scripts/fetch-prebuilts.sh
@@ -74,13 +86,16 @@ jobs:
           COMPRESS: '1'
         run: sudo -E ./scripts/make-rootfs-image.sh
 
+      - name: Free the rootfs tarball (not needed once the image exists)
+        run: rm -f ota/ubuntu-touch-android9plus-rootfs-arm64.tar.gz && df -h /
+
       - name: Assemble flashable zip
         run: ./scripts/build-zip.sh
 
       - name: Show artifacts
         run: |
           ls -lh out/ dist/
-          cat dist/*.buildinfo || true
+          cat dist/*.buildinfo
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

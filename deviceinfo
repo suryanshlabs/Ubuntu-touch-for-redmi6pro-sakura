@@ -14,9 +14,24 @@ deviceinfo_name="Redmi 6 Pro"
 deviceinfo_manufacturer="Xiaomi"
 deviceinfo_codename="sakura"
 
+##########
 # Architecture
+#
+# Must be "aarch64", not "arm64". The build tools derive the toolchain prefixes from
+# this value:
+#   CROSS_COMPILE = ${kernel_arch}-linux-android-
+#   CLANG_TRIPLE  = ${kernel_arch}-linux-gnu-
+# The prebuilt toolchains only exist as aarch64-linux-android-* (GCC 4.9) and
+# aarch64-linux-gnu-* (clang --target). With "arm64" both prefixes point at binaries
+# that do not exist, ld falls back to the host x86 linker, cc-option tests fail and
+# the kernel stops in prepare-compiler-check with
+#   "Cannot use CONFIG_CC_STACKPROTECTOR_STRONG: -fstack-protector-strong not
+#    supported by compiler"
+# (observed in Actions run 45790705219, see docs/PORTING_LOG.md).
+##########
+
 deviceinfo_arch="aarch64"
-deviceinfo_kernel_arch="arm64"
+deviceinfo_kernel_arch="aarch64"
 
 # Halium / Ubuntu Touch release
 deviceinfo_halium_version="10"
@@ -36,25 +51,30 @@ deviceinfo_kernel_defconfig="sakura_defconfig"
 
 # LineageOS builds this kernel with clang; the build tools fetch the Halium 10
 # clang prebuilts (android10-gsi / r353983c) automatically.
+# If that toolchain cannot build this tree, ./build.sh KERNEL_GCC=1 (or the CI
+# "GCC fallback" step) retries with the GCC 4.9 prebuilts instead.
 deviceinfo_kernel_clang_compile="true"
 
 # MSM8953 4.9 kernels emit an image with the qcom DTB appended to the gzip payload.
 deviceinfo_kernel_image_name="Image.gz-dtb"
 
-# Stock sakura cmdline (LineageOS BoardConfig.mk) plus the mandatory Halium bits.
-# console=tty0 is required for the Ubuntu Touch rootfs to boot; it must never be removed.
+# Stock sakura cmdline from device/xiaomi/msm8953-common/BoardConfigCommon.mk
+# (BOARD_KERNEL_CMDLINE) plus the two Halium additions:
+#   console=tty0                  - mandatory for the Ubuntu Touch rootfs
+#   androidboot.selinux=permissive - bring-up only, drop it once SELinux is solved
 # systempart is intentionally NOT set: this port boots the rootfs from /data/rootfs.img
 # (dual-boot install, see docs/INSTALL_ME.md).
-deviceinfo_kernel_cmdline="console=tty0 androidboot.hardware=qcom msm_rtb.filter=0x237 ehci-hcd.park=3 androidboot.bootdevice=7824900.sdhci earlycon=msm_hsl_uart,0x78af000 androidboot.usbconfigfs=true androidboot.selinux=permissive"
+deviceinfo_kernel_cmdline="androidboot.hardware=qcom msm_rtb.filter=0x237 ehci-hcd.park=3 lpm_levels.sleep_disabled=1 androidboot.bootdevice=7824900.sdhci earlycon=msm_hsl_uart,0x78af000 androidboot.usbconfigfs=true loop.max_part=16 console=tty0 androidboot.selinux=permissive"
 
 ##########
 # Boot image
-# Source: device/xiaomi/sakura/BoardConfig.mk (LineageOS 17.1 / 18.1)
-#   BOARD_KERNEL_BASE            := 0x80000000
-#   BOARD_KERNEL_PAGESIZE        := 2048
-#   BOARD_MKBOOTIMG_ARGS         := --ramdisk_offset 0x01000000 --tags_offset 0x00000100
-#   BOARD_BOOTIMAGE_PARTITION_SIZE := 67108864 (64 MiB)
-# sakura shipped with Android 8.1 and LineageOS builds it with header v0.
+# Source: device/xiaomi/msm8953-common/BoardConfigCommon.mk (lineage-17.1 and 18.1)
+#   BOARD_KERNEL_BASE               := 0x80000000
+#   BOARD_KERNEL_PAGESIZE           := 2048
+#   BOARD_MKBOOTIMG_ARGS            := --ramdisk_offset 0x01000000 --tags_offset 0x00000100
+#   BOARD_BOOTIMAGE_PARTITION_SIZE  := 67108864 (64 MiB)
+#   BOARD_KERNEL_IMAGE_NAME         := Image.gz-dtb
+# sakura shipped with Android 8.1 and LineageOS builds it with boot header v0.
 ##########
 
 deviceinfo_bootimg_header_version="0"
@@ -64,7 +84,18 @@ deviceinfo_flash_offset_kernel="0x00008000"
 deviceinfo_flash_offset_ramdisk="0x01000000"
 deviceinfo_flash_offset_second="0x00000000"
 deviceinfo_flash_offset_tags="0x00000100"
-deviceinfo_bootimg_partition_size="67108864"
+
+# make-bootimage.sh always passes --os_version/--os_patch_level to mkbootimg.py.
+# Leaving these empty makes argparse consume the next flag as the value and abort
+# with "argument --os_version: expected one argument", so they are required.
+deviceinfo_bootimg_os_version="10"
+deviceinfo_bootimg_os_patch_level="2021-07-01"
+
+# deviceinfo_bootimg_partition_size is deliberately NOT set. When it is set,
+# make-bootimage.sh runs `avbtool add_hash_footer` on boot.img, which needs a key
+# this port does not have, and pads the image through AVB. scripts/build-zip.sh
+# pads boot.img to the 64 MiB partition itself instead (truncate), which needs no
+# key and no AVB metadata.
 
 # Halium 10 generic boot ramdisk (non-dynparts: sakura has dedicated system/vendor partitions)
 deviceinfo_prebuilt_boot_ramdisk_source="https://github.com/halium/initramfs-tools-halium/releases/download/continuous/initrd.img-touch-arm64"

@@ -5,20 +5,23 @@
 # Thin wrapper around the official UBports tooling:
 #   https://gitlab.com/ubports/porting/community-ports/halium-generic-adaptation-build-tools
 #
-# It does three things the upstream script does not do on its own:
+# It does four things the upstream script does not do on its own:
 #   1. clones the build tools into ./build (git-ignored)
-#   2. merges device/halium.config into the kernel defconfig (clone-only pass first)
+#   2. runs a clone-only pass, then merges device/halium.config into the kernel defconfig
 #   3. runs the upstream build against ./workdir, producing ./out/device_sakura.tar.xz
 #      plus workdir/tmp/partitions/boot.img
+#   4. optionally retries the whole build with GCC 4.9 instead of clang
 #
 # Output:
 #   out/device_sakura.tar.xz        device tarball (overlaystore + modules)
-#   workdir/tmp/partitions/boot.img Halium boot image (kernel + initramfs)
+#   out/boot.img                    Halium boot image (kernel + initramfs)
+#   workdir/tmp/partitions/boot.img the same image, where the build tools leave it
 #
 # Usage:
-#   ./build.sh                 full build
+#   ./build.sh                 full build (clang, as deviceinfo says)
 #   ./build.sh -c              clone only (kernel sources + prebuilts)
 #   ./build.sh -k              rebuild the kernel/boot image only
+#   KERNEL_GCC=1 ./build.sh    same build, but with the GCC 4.9 prebuilts instead of clang
 #   BUILD_DIR=/tmp/wd ./build.sh
 #
 set -euo pipefail
@@ -30,11 +33,26 @@ BUILD_TOOLS_DIR="${BUILD_TOOLS_DIR:-$ROOT/build}"
 BUILD_TOOLS_REPO="${BUILD_TOOLS_REPO:-https://gitlab.com/ubports/porting/community-ports/halium-generic-adaptation-build-tools.git}"
 BUILD_TOOLS_BRANCH="${BUILD_TOOLS_BRANCH:-main}"
 BUILD_DIR="${BUILD_DIR:-$ROOT/workdir}"
+KERNEL_GCC="${KERNEL_GCC:-0}"
 
 if [ ! -f "$BUILD_TOOLS_DIR/build.sh" ]; then
     echo "==> Cloning halium-generic-adaptation-build-tools ($BUILD_TOOLS_BRANCH)"
     rm -rf "$BUILD_TOOLS_DIR"
     git clone --depth 1 -b "$BUILD_TOOLS_BRANCH" "$BUILD_TOOLS_REPO" "$BUILD_TOOLS_DIR"
+fi
+
+# Optional GCC fallback: the upstream scripts source ./deviceinfo themselves, so the only
+# way to switch the toolchain from outside is to patch that file for the duration of the
+# build. It is restored on exit, including on failure.
+if [ "$KERNEL_GCC" = "1" ]; then
+    echo "==> KERNEL_GCC=1: building with the GCC 4.9 prebuilts instead of clang"
+    cp -f "$ROOT/deviceinfo" "$ROOT/.deviceinfo.orig"
+    trap 'mv -f "$ROOT/.deviceinfo.orig" "$ROOT/deviceinfo" 2>/dev/null || true' EXIT
+    sed -i 's/^deviceinfo_kernel_clang_compile=.*/deviceinfo_kernel_clang_compile="false"/' "$ROOT/deviceinfo"
+    grep -q '^deviceinfo_kernel_clang_compile="false"' "$ROOT/deviceinfo" \
+        || { echo "build.sh: could not switch deviceinfo to GCC" >&2; exit 1; }
+    # Objects and .config from the failed toolchain must not be reused.
+    rm -rf "$BUILD_DIR/downloads/KERNEL_OBJ" "$BUILD_DIR/tmp"
 fi
 
 # 1. clone-only pass: downloads prebuilts and the kernel source, builds nothing.
