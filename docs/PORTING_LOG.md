@@ -6,6 +6,41 @@ time · **[blocked]** needs something outside the repository.
 
 ---
 
+## 2026-11-26 (latest) — the kernel builds; the device tarball did not
+
+Run `45879071056` on the fixed tree got much further: **the kernel compiled and linked
+successfully with clang 9 in 13 minutes** (`Image.gz-dtb` + all modules), so the toolchain
+fix above was correct. It then stopped in the upstream `build-tarball-mainline.sh`:
+
+```
++ cp -av 'overlay/*' /home/runner/work/.../workdir/tmp/
+cp: cannot stat 'overlay/*': No such file or directory
+##[error]Process completed with exit code 1.
+```
+
+That script copies `overlay/*` into the device tarball **unconditionally**, with `set -e`.
+Every UBports port tree therefore has an `overlay/` directory; this repository only had
+`device/overlay/` (the rootfs overlay), so the glob matched nothing and `cp` failed.
+
+The GCC fallback step then re-ran the whole kernel build with GCC 4.9 and hit the same
+step, which is why the job log shows two identical failures.
+
+**Fix:** `overlay/README.md`. It is deliberately at the top level of `overlay/`, because
+`build-tarball-mainline.sh` only packs `partitions/` and `system/` into the tarball, so the
+file explains itself and never reaches the phone. `scripts/preflight.sh` now also fails
+fast if `overlay/` is missing or empty.
+
+**Also fixed:** the kernel object directory lives in `workdir/downloads`, which is cached
+between CI runs. After a clang failure the fallback rebuilds it with GCC, so the cache can
+hold GCC objects while the next run builds with clang — and a compiler change is not a make
+dependency, so nothing would notice. `build.sh` now records the toolchain in
+`workdir/downloads/.sakura-toolchain` and wipes `KERNEL_OBJ` when it does not match.
+
+**[open]** Next run: rootfs image, zip and release were never reached. They are the only
+steps still unproven.
+
+---
+
 ## 2026-11-26 (later) — first CI run diagnosed and fixed
 
 The first GitHub Actions run (`45790705219`, commit `3da14af`) failed after 8 minutes,

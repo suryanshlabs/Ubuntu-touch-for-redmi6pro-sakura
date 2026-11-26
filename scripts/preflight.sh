@@ -81,6 +81,15 @@ check_url "${deviceinfo_prebuilt_boot_ramdisk_source:-}" "halium boot ramdisk"
 check_url "${ROOTFS_URL:-https://ci.ubports.com/job/ubuntu-touch-rootfs/job/ubports%2F24.04-2.x/lastStableBuild/artifact/ubuntu-touch-android9plus-rootfs-arm64.tar.gz}" "ubuntu touch rootfs"
 check_url "${GSI_URL:-https://ci.ubports.com/job/UBportsCommunityPortsJenkinsCI/job/ubports%2Fporting%2Fcommunity-ports%2Fjenkins-ci%2Fgeneric_arm64/job/halium-10.0/lastSuccessfulBuild/artifact/halium_halium_arm64.tar.xz}" "halium 10 gsi"
 
+echo "==> port-root overlay"
+# build-tarball-mainline.sh runs `cp -av overlay/* "$dir/"` unconditionally, so the
+# directory must exist and contain at least one file.
+if [ -d overlay ] && [ -n "$(ls -A overlay 2>/dev/null)" ]; then
+    ok "overlay/ exists and is not empty"
+else
+    bad "overlay/ is missing or empty: build-tarball-mainline.sh fails with 'cp: cannot stat overlay/*'"
+fi
+
 echo "==> scripts"
 for f in build.sh scripts/*.sh; do
     [ -f "$f" ] || continue

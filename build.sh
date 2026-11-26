@@ -62,9 +62,24 @@ echo "==> Preparing kernel sources (clone-only pass)"
 # 2. merge the Halium kernel config fragment into the device defconfig.
 "$ROOT/scripts/prepare-kernel-config.sh" "$BUILD_DIR"
 
-# 3. real build.
+# 3. Refuse to reuse objects from a different compiler. The kernel object directory is
+#    cached between CI runs, and objects built by clang and by GCC cannot be mixed; the
+#    compiler is not a make dependency, so nothing else would notice the change.
+KERNEL_OBJ_DIR="$BUILD_DIR/downloads/KERNEL_OBJ"
+TOOLCHAIN_STAMP="$BUILD_DIR/downloads/.sakura-toolchain"
+WANTED_TOOLCHAIN=clang
+if grep -q '^deviceinfo_kernel_clang_compile="\(false\|0\)"' "$ROOT/deviceinfo"; then
+    WANTED_TOOLCHAIN=gcc
+fi
+if [ -d "$KERNEL_OBJ_DIR" ] && [ "$(cat "$TOOLCHAIN_STAMP" 2>/dev/null)" != "$WANTED_TOOLCHAIN" ]; then
+    echo "==> Kernel objects were not built with $WANTED_TOOLCHAIN (or unknown); rebuilding them"
+    rm -rf "$KERNEL_OBJ_DIR"
+fi
+
+# 4. real build.
 echo "==> Building kernel + boot image"
 "$BUILD_TOOLS_DIR/build.sh" -b "$BUILD_DIR" "$@"
+printf '%s\n' "$WANTED_TOOLCHAIN" > "$TOOLCHAIN_STAMP"
 
 mkdir -p "$ROOT/out"
 if [ -f "$BUILD_DIR/tmp/partitions/boot.img" ]; then

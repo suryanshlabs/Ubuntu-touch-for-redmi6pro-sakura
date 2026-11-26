@@ -101,6 +101,7 @@ has run and someone flashes it.
 ├── build.sh                      wrapper around the UBports build tools
 ├── .github/workflows/build.yml   CI: build -> zip -> artifacts / GitHub Release
 ├── .gitlab-ci.yml                UBports shared pipeline (optional)
+├── overlay/README.md             port-root overlay required by the upstream tarball script
 ├── device/
 │   ├── halium.config             kernel config fragment (binder, namespaces, cgroups)
 │   ├── overlay/system/...        rootfs overlay: deviceinfo YAML, udev rules
