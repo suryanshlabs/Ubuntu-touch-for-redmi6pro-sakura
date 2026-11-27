@@ -233,3 +233,29 @@ which is where `build.sh` gets the root it needs.
 
 **[open]** Nothing has been flashed on hardware yet, so backlog item 1 is done and items 2-6
 (initramfs bring-up, full install, per-feature bring-up) are the remaining work.
+
+---
+
+## 2026-11-27 — `rootfs_bytes` wrapped to 0 in the published manifest
+
+**[bug]** The first release's `.buildinfo` carries `rootfs_bytes 0`. `make-rootfs-image.sh`
+prefers `pigz`, and pigz writes gzip's 32-bit ISIZE field as 0 for any stream of 4 GiB or
+more — which is exactly the default image size. `gzip -l` therefore reported 0,
+`build-zip.sh` copied it straight into `build.prop`, and the installer only substituted its
+default when the key was *empty*, not when it was zero. A manifest of `0` makes the `/data`
+free-space check ask for ~2 GiB instead of ~5 GiB, so an install with 3 GiB free would flash
+`boot.img`, fill `/data` while writing the rootfs and abort halfway — a bootloop into a
+Halium kernel with no rootfs behind it.
+
+**[done]** `build-zip.sh` takes the size from `out/rootfs.img` when it still exists (it does
+in CI, because the compression step keeps the plain image), falls back to the gzip trailer,
+and finally counts decompressed bytes with `pigz`/`gzip`. A size that is still 0 is now a
+hard failure instead of a silently wrong manifest. The installer treats an empty,
+non-numeric or zero value as unknown and uses 4 GiB, so zips built before this fix are also
+checked correctly.
+
+**[done]** Verified with a synthetic payload (1 MiB boot image, 4 MiB Android image, real
+4 GiB rootfs) through `./scripts/build-zip.sh`: the zip's `build.prop` and the `.buildinfo`
+both read `rootfs_bytes 4294967296`, and the installer's requirement becomes 6292256 KiB.
+The byte-counting branch was exercised but not to completion inside this 5-minute sandbox
+cap — it is a safety net, not the path CI takes.

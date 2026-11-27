@@ -103,7 +103,28 @@ echo "    android-rootfs.img: $((ANDROID_BYTES / 1024 / 1024)) MiB"
 cp -f "$ROOTFS_GZ" "$STAGE/images/rootfs.img.gz"
 cp -f "$DEVICE_TAR" "$STAGE/device_${DEVICE}.tar.xz"
 
-ROOTFS_BYTES="$(gzip -l "$STAGE/images/rootfs.img.gz" | awk 'NR==2 {print $2}')"
+# The installer sizes its /data free-space check from this number, so it has to be the
+# real uncompressed size. gzip stores that size in a 32-bit trailer, so an image of
+# exactly 4 GiB reports 0 — prefer the plain image when it is still on disk, and fall
+# back to counting the decompressed bytes if the header is unusable.
+ROOTFS_BYTES=""
+ROOTFS_IMG="${ROOTFS_IMG:-$OUT_DIR/rootfs.img}"
+if [ -s "$ROOTFS_IMG" ]; then
+    ROOTFS_BYTES="$(stat -c%s "$ROOTFS_IMG")"
+    echo "==> rootfs uncompressed size from $(basename "$ROOTFS_IMG"): $ROOTFS_BYTES bytes"
+fi
+if [ -z "$ROOTFS_BYTES" ] || [ "$ROOTFS_BYTES" -le 0 ]; then
+    ROOTFS_BYTES="$(gzip -l "$STAGE/images/rootfs.img.gz" | awk 'NR==2 {print $2}')"
+fi
+if [ -z "$ROOTFS_BYTES" ] || [ "$ROOTFS_BYTES" -le 0 ]; then
+    echo "==> gzip trailer reports $ROOTFS_BYTES, counting decompressed bytes instead"
+    if command -v pigz >/dev/null 2>&1; then
+        ROOTFS_BYTES="$(pigz -dc "$STAGE/images/rootfs.img.gz" | wc -c)"
+    else
+        ROOTFS_BYTES="$(gzip -dc "$STAGE/images/rootfs.img.gz" | wc -c)"
+    fi
+fi
+[ "$ROOTFS_BYTES" -gt 0 ] || fail "could not determine the uncompressed rootfs size"
 
 cat > "$STAGE/META-INF/sakura/build.prop" <<MANIFEST
 # Build identification, written to /data/sakura-ubuntu-touch-build.prop on install.

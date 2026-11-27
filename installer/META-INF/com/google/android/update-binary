@@ -94,7 +94,11 @@ ANDROID_IMG="$WORK/images/android-rootfs.img"
 # ---------------------------------------------------------------- space check
 BUILD_PROP="$WORK/meta/META-INF/sakura/build.prop"
 ROOTFS_BYTES="$(sed -n 's/^sakura\.build\.rootfs_bytes=//p' "$BUILD_PROP" 2>/dev/null)"
-[ -z "$ROOTFS_BYTES" ] && ROOTFS_BYTES=3221225472
+# A missing or non-numeric value means the manifest cannot be trusted. Treat 0 the same
+# way: it is what an exactly-4 GiB image looks like once gzip's 32-bit size field wraps,
+# and believing it would under-check /data by the whole rootfs and die mid-write.
+case "$ROOTFS_BYTES" in ''|*[!0-9]*) ROOTFS_BYTES=0 ;; esac
+[ "$ROOTFS_BYTES" -gt 0 ] || ROOTFS_BYTES=4294967296
 ANDROID_BYTES="$(sed -n 's/^sakura\.build\.android_rootfs_bytes=//p' "$BUILD_PROP" 2>/dev/null)"
 [ -z "$ANDROID_BYTES" ] && ANDROID_BYTES=1073741824
 # rootfs + Android image + the unpacked copies now in $WORK + 1 GiB headroom
