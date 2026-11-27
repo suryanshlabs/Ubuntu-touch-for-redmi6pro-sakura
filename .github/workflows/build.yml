@@ -125,19 +125,39 @@ jobs:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.release_tag || 'continuous-build' }}
           name: Ubuntu Touch 24.04 for Redmi 6 Pro - ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.release_tag || 'continuous build' }}
           draft: false
-          prerelease: true
+          # A v* tag is a real release (GitHub marks it "Latest"); the rolling
+          # continuous-build entry stays a pre-release so nobody mistakes it for one.
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
           body: |
             Ubuntu Touch 24.04 (Halium 10, arm64) for Xiaomi Redmi 6 Pro (`sakura`).
 
             Build commit: `${{ github.sha }}`
 
-            **Status: untested build output.** No one has booted this image on hardware yet.
-            See `docs/INSTALL_ME.md` for prerequisites (unlocked bootloader, OrangeFox,
-            ext4 unencrypted `/data`) and the rollback steps.
+            **Download the `.zip` only.** The `.sha256` and `.buildinfo` next to it are for
+            verification; no other file in this release is flashed.
 
-            * flash the `.zip` from OrangeFox / TWRP
-            * `boot.img` alone is also attached inside the zip under `partitions/`
-            * verify with the `.sha256` file
+            **This is a single-boot install.** The zip overwrites the `boot` partition with the
+            Halium kernel and initramfs, so the phone boots straight into Ubuntu Touch and
+            Android stops booting -- there is no dual-boot menu. The Ubuntu rootfs is stored as
+            `/data/rootfs.img` only because sakura's 3.0 GiB system partition cannot hold it.
+            Nothing is written to `/system`.
+
+            Requirements: unlocked bootloader, OrangeFox/TWRP for sakura, Android 10 firmware,
+            `/data` ext4 and unencrypted, ~7 GB free in `/data`.
+
+            * flash the `.zip` from OrangeFox / TWRP, then reboot to **system**
+            * first boot takes 5-10 minutes with a dark screen
+            * the installer saves Android's boot image to `/sdcard/sakura-ut-backup/boot-stock.img`;
+              flashing that back returns the phone to Android
+            * full guide: `docs/INSTALL_ME.md`
+
+            **Status: untested on hardware.** No one has booted this image on a real phone yet.
+
+            Verify before flashing:
+
+            ```bash
+            sha256sum -c sakura-ut24.04-halium10-*.zip.sha256
+            ```
           files: |
             dist/*.zip
             dist/*.sha256
