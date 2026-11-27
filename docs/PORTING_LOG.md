@@ -297,3 +297,30 @@ is no boot menu, Android never boots again, and the phone goes straight into Ubu
 Only the rootfs *files* are stored in `/data`, because sakura's 3.0 GiB system partition has
 no room for a 4 GiB image plus OTA headroom. `README.md`, `docs/INSTALL_ME.md` and the
 installer's messages now say this plainly instead of implying a dual-boot setup.
+
+---
+
+### v0.1.0 - the final, single release
+
+Pushed tag `v0.1.0` (commit `763c25d`) to make a proper versioned release, instead of the
+rolling `prerelease` `continuous-build` that accumulated 15 zips including the old buggy
+ones. Tagged builds are now published as real releases (`prerelease: false`), so GitHub
+marks them "Latest".
+
+New release: [Ubuntu Touch 24.04 for Redmi 6 Pro - v0.1.0](https://github.com/suryanshlabs/Ubuntu-touch-for-redmi6pro-sakura/releases/tag/v0.1.0)
+(prerelease: false, marked Latest)
+
+Assets: only the zip, its `.sha256`, and `.buildinfo`
+(file name `sakura-ut24.04-halium10-v0.1.0-20261127-763c25d.zip`,
+1,197,988,482 bytes, sha256 `c8c5825833bcd7876df2ee25c82d41435c5e4bf0baf217334b69a58927197041`).
+
+Archive contents (verified by unzipping the downloaded file):
+* `partitions/boot.img` = 67,108,864 bytes (exactly the 64 MiB boot partition)
+* `images/rootfs.img.gz` = 974,467,043
+* `images/android-rootfs.img` = 537,280,512
+* `device_sakura.tar.xz` = 15,288,177
+* `META-INF/sakura/build.prop` = 257
+
+Workflow: workflow body now says the zip is a single-boot install (no dual-boot menu; Android
+stops booting), lists prerequisites, and points to the rollback + `docs/INSTALL_ME.md`; the
+`continuous-build` entry stays a pre-release.
