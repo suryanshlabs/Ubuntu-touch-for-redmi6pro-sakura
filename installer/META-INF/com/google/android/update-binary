@@ -64,7 +64,7 @@ ui_print "[*] /data mounted"
 
 WORK="/data/sakura-ut-install"
 rm -rf "$WORK"
-if ! mkdir -p "$WORK/images" "$WORK/partitions" "$WORK/meta"; then
+if ! mkdir -p "$WORK/images" "$WORK/partitions"; then
     die "Cannot create $WORK"
 fi
 # The exit status of the last command in an EXIT trap becomes the script's exit status.
@@ -76,6 +76,34 @@ cleanup() {
     return "$rc"
 }
 trap cleanup EXIT
+
+# ---------------------------------------------------------------- space check
+# Read the manifest straight out of the zip: the check has to run before anything is
+# unpacked, and `unzip -d` would place it at $WORK/META-INF, not $WORK/meta.
+BUILD_PROP_REL="META-INF/sakura/build.prop"
+BUILD_PROP="$WORK/$BUILD_PROP_REL"
+MANIFEST="$(unzip -p "$ZIPFILE" "$BUILD_PROP_REL" 2>/dev/null || true)"
+ROOTFS_BYTES="$(printf '%s\n' "$MANIFEST" | sed -n 's/^sakura\.build\.rootfs_bytes=//p')"
+# A missing or non-numeric value means the manifest cannot be trusted. Treat 0 the same
+# way: it is what an exactly-4 GiB image looks like once gzip's 32-bit size field wraps,
+# and believing it would under-check /data by the whole rootfs and die mid-write.
+case "$ROOTFS_BYTES" in ''|*[!0-9]*) ROOTFS_BYTES=0 ;; esac
+[ "$ROOTFS_BYTES" -gt 0 ] || ROOTFS_BYTES=4294967296
+ANDROID_BYTES="$(printf '%s\n' "$MANIFEST" | sed -n 's/^sakura\.build\.android_rootfs_bytes=//p')"
+case "$ANDROID_BYTES" in ''|*[!0-9]*) ANDROID_BYTES=0 ;; esac
+[ "$ANDROID_BYTES" -gt 0 ] || ANDROID_BYTES=1073741824
+# rootfs + Android image + the unpacked copies now in $WORK + 1 GiB headroom
+NEED_KB=$(( (ROOTFS_BYTES + ANDROID_BYTES * 2) / 1024 + 1048576 ))
+AVAIL_KB="$(df -k /data 2>/dev/null | awk 'NR==2 {print $4}')"
+case "$AVAIL_KB" in ''|*[!0-9]*) AVAIL_KB='' ;; esac
+if [ -n "$AVAIL_KB" ]; then
+    if [ "$AVAIL_KB" -lt "$NEED_KB" ]; then
+        die "Not enough free space in /data: need $((NEED_KB/1024)) MiB, available $((AVAIL_KB/1024)) MiB."
+    fi
+    ui_print "[*] Free space check passed ($((AVAIL_KB/1024)) MiB available, $((NEED_KB/1024)) MiB needed)"
+else
+    ui_print "[!] Could not read the free space of /data, continuing anyway."
+fi
 
 # ---------------------------------------------------------------- unpack
 ui_print "[*] Unpacking images into /data (this takes a minute)..."
@@ -91,23 +119,6 @@ ANDROID_IMG="$WORK/images/android-rootfs.img"
 [ -s "$ROOTFS_GZ" ] || die "rootfs.img.gz missing from the zip"
 [ -s "$ANDROID_IMG" ] || die "android-rootfs.img missing from the zip"
 
-# ---------------------------------------------------------------- space check
-BUILD_PROP="$WORK/meta/META-INF/sakura/build.prop"
-ROOTFS_BYTES="$(sed -n 's/^sakura\.build\.rootfs_bytes=//p' "$BUILD_PROP" 2>/dev/null)"
-# A missing or non-numeric value means the manifest cannot be trusted. Treat 0 the same
-# way: it is what an exactly-4 GiB image looks like once gzip's 32-bit size field wraps,
-# and believing it would under-check /data by the whole rootfs and die mid-write.
-case "$ROOTFS_BYTES" in ''|*[!0-9]*) ROOTFS_BYTES=0 ;; esac
-[ "$ROOTFS_BYTES" -gt 0 ] || ROOTFS_BYTES=4294967296
-ANDROID_BYTES="$(sed -n 's/^sakura\.build\.android_rootfs_bytes=//p' "$BUILD_PROP" 2>/dev/null)"
-[ -z "$ANDROID_BYTES" ] && ANDROID_BYTES=1073741824
-# rootfs + Android image + the unpacked copies now in $WORK + 1 GiB headroom
-NEED_KB=$(( (ROOTFS_BYTES + ANDROID_BYTES * 2) / 1024 + 1048576 ))
-AVAIL_KB="$(df -k /data | awk 'NR==2 {print $4}')"
-if [ -n "$AVAIL_KB" ] && [ "$AVAIL_KB" -lt "$NEED_KB" ]; then
-    die "Not enough free space in /data: need $((NEED_KB/1024)) MiB, available $((AVAIL_KB/1024)) MiB."
-fi
-ui_print "[*] Free space check passed ($((AVAIL_KB/1024)) MiB available)"
 
 # ---------------------------------------------------------------- backup boot
 BOOT_PART=""

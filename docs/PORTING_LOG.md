@@ -259,3 +259,27 @@ checked correctly.
 both read `rootfs_bytes 4294967296`, and the installer's requirement becomes 6292256 KiB.
 The byte-counting branch was exercised but not to completion inside this 5-minute sandbox
 cap — it is a safety net, not the path CI takes.
+
+---
+
+## 2026-11-27 — the installer never read its own manifest
+
+**[bug]** `update-binary` unpacked with `unzip -d "$WORK"`, which places the manifest at
+`$WORK/META-INF/sakura/build.prop`, but read it from `$WORK/meta/META-INF/sakura/build.prop`.
+The `sed` always came back empty, so the `/data` space check silently used defaults and
+`/data/sakura-ubuntu-touch-build.prop` was never written. The check also sat *after* the
+unpack, so a too-full `/data` failed during unpacking instead of being refused up front.
+
+**[done]** The manifest is now read straight out of the zip with `unzip -p` before anything is
+unpacked; the space check runs first, an unreadable `df` is reported instead of aborting, and
+the build.prop copy uses the path `unzip` really creates. Verified by running the installer's
+own block against a freshly built zip: `rootfs_bytes` and `android_rootfs_bytes` parse out of
+the archive and the requirement is computed from them.
+
+**[done]** Audited the real release asset with HTTP range requests instead of a 1.2 GiB
+download. Entries: `partitions/boot.img` 15,403,091 stored / 67,108,864 uncompressed (exactly
+the 64 MiB boot partition), `images/rootfs.img.gz` 974,286,541 (stored), 
+`images/android-rootfs.img` 192,824,216 / 537,280,512, `device_sakura.tar.xz` 15,288,177,
+`META-INF/sakura/build.prop` 257. Zip total 1,197,807,377 bytes. Nothing is written to the
+3.0 GiB system partition: the installer touches only `boot` and files under `/data`, so the
+system-image size limit does not apply to this zip.
