@@ -34,10 +34,13 @@ Full research, sources and decisions: [RESEARCH.md](RESEARCH.md).
 | Ubuntu Touch release | **24.04-2.x** (Noble) | current stable series |
 | Kernel | 4.9, `mahajant99/kernel_xiaomi_msm8953`, branch `lineage-17.1` | the tree the sakura device trees build against |
 | Build method | Standalone kernel (UBports `halium-generic-adaptation-build-tools`) | 20-30 GB and one CI runner; a full Halium tree needs 60-120 GB |
-| Install method | **Flashable zip via OrangeFox / TWRP**, dual-boot in `/data` | sakura's system partition is only 3.0 GiB |
+| Install method | **Flashable zip via OrangeFox / TWRP**, single-boot: it replaces the boot image | sakura's 3.0 GiB system partition has no room for a 4 GiB rootfs image plus updates, so the image lives in `/data` |
 
-`systempart=` is deliberately **not** in the kernel cmdline: the rootfs lives at
-`/data/rootfs.img` and the Android GSI at `/data/android-rootfs.img`.
+There is **no dual-boot menu**. The zip overwrites the `boot` partition with the Halium
+kernel and initramfs, so the phone boots straight into Ubuntu Touch every time and Android
+stops booting (reflash the saved `boot-stock.img` to bring it back). Only the rootfs *files*
+live in `/data`: `systempart=` is deliberately **not** in the kernel cmdline, the rootfs is
+`/data/rootfs.img` and the Android GSI `/data/android-rootfs.img`.
 
 ## Build (GitHub Actions)
 

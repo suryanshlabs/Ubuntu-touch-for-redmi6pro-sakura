@@ -1,7 +1,9 @@
 #!/bin/sh
 #
 # Ubuntu Touch 24.04 (Halium 10) installer for Xiaomi Redmi 6 Pro (sakura)
-# Flash from OrangeFox / TWRP. Installs alongside Android in /data.
+# Flash from OrangeFox / TWRP. This replaces the boot image, so the phone boots Ubuntu
+# Touch directly: no dual-boot menu, and Android stops booting until the saved boot image is
+# flashed back. Only the rootfs images are stored as files in /data.
 #
 # Layout written by this script:
 #   /dev/block/by-name/boot   <- Halium kernel + initramfs   (partitions/boot.img)
@@ -192,7 +194,8 @@ ui_print "   2. First boot takes 5-10 minutes; the screen stays dark for a while
 ui_print "   3. To go back to Android: flash /sdcard/sakura-ut-backup/boot-stock.img"
 ui_print "      from recovery, or 'fastboot flash boot boot-stock.img' on a PC."
 ui_print ""
-ui_print "  Android data is untouched: the Ubuntu images live next to it in /data."
+ui_print "  Single-boot: Android will not boot until you flash boot-stock.img back."
+ui_print "  Its files in /data are untouched."
 ui_print ""
 ui_print "*********************************************"
 

@@ -288,3 +288,12 @@ system-image size limit does not apply to this zip.
 device behind `/dev/block/by-name/boot` and refuses to write the padded 64 MiB image if the
 partition is smaller, instead of running `dd` past the end into the next partition. An
 unreadable size is reported and the write goes ahead, as before.
+
+### Single-boot, not dual-boot — wording corrected
+
+The docs and the installer called the `/data` placement a "dual-boot" install. That was
+wrong: the zip overwrites the `boot` partition with the Halium kernel and initramfs, so there
+is no boot menu, Android never boots again, and the phone goes straight into Ubuntu Touch.
+Only the rootfs *files* are stored in `/data`, because sakura's 3.0 GiB system partition has
+no room for a 4 GiB image plus OTA headroom. `README.md`, `docs/INSTALL_ME.md` and the
+installer's messages now say this plainly instead of implying a dual-boot setup.

@@ -1,7 +1,11 @@
 # Installing on Redmi 6 Pro (sakura)
 
-**Read this whole page before flashing.** The installer replaces the boot image and adds
-two images to `/data`; Android stays intact and can be restored.
+**Read this whole page before flashing.** This replaces your OS — it is *not* a dual-boot
+install and there is no boot menu. The installer overwrites the boot image with the Halium
+kernel and initramfs, so the phone boots straight into Ubuntu Touch and Android stops booting.
+The Ubuntu rootfs is kept as two files in `/data` only because sakura's 3.0 GiB system
+partition cannot hold the 4 GiB image; Android's own files there are left untouched, and
+flashing the saved `boot-stock.img` brings Android back.
 
 > **Status:** the zip produced by this repository has **never been flashed to hardware**.
 > Treat the first flash as an experiment on a phone whose data you can lose.
@@ -44,9 +48,10 @@ is lost).
 ```
 [*] Device check passed (sakura)
 [*] /data mounted
-[*] Unpacking images (this takes a minute)...
-[*] Free space check passed (20480 MiB available)
+[*] Free space check passed (20480 MiB available, 6246 MiB needed)
+[*] Unpacking images into /data (this takes a minute)...
 [*] Backing up the current boot image to /data/media/0/sakura-ut-backup
+[*] Boot image fits the partition (67108864 of 67108864 bytes)
 [*] Flashing Halium boot image to /dev/block/by-name/boot
 [*] Writing /data/rootfs.img (usually 2-4 minutes)...
 [*] Writing /data/android-rootfs.img
