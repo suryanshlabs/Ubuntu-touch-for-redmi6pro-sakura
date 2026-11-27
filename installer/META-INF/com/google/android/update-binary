@@ -127,6 +127,27 @@ for p in /dev/block/by-name/boot /dev/block/bootdevice/by-name/boot; do
 done
 [ -n "$BOOT_PART" ] || die "boot partition not found."
 
+# build-zip.sh pads boot.img to exactly BOARD_BOOTIMAGE_PARTITION_SIZE (64 MiB). If this
+# phone's boot partition were smaller, dd would write past its end into whatever follows,
+# so verify the size first and refuse instead of guessing.
+BOOT_IMG_BYTES="$(wc -c < "$BOOT_IMG")"
+BOOT_NODE=""
+if command -v readlink >/dev/null 2>&1; then
+    BOOT_NODE="$(basename "$(readlink "$BOOT_PART" 2>/dev/null)" 2>/dev/null)"
+fi
+BOOT_SECTORS=""
+[ -n "$BOOT_NODE" ] && BOOT_SECTORS="$(cat "/sys/class/block/$BOOT_NODE/size" 2>/dev/null)"
+case "$BOOT_SECTORS" in ''|*[!0-9]*) BOOT_SECTORS='' ;; esac
+if [ -n "$BOOT_SECTORS" ]; then
+    BOOT_PART_BYTES=$((BOOT_SECTORS * 512))
+    if [ "$BOOT_IMG_BYTES" -gt "$BOOT_PART_BYTES" ]; then
+        die "boot.img is $BOOT_IMG_BYTES bytes but the boot partition is $BOOT_PART_BYTES bytes."
+    fi
+    ui_print "[*] Boot image fits the partition ($BOOT_IMG_BYTES of $BOOT_PART_BYTES bytes)"
+else
+    ui_print "[!] Could not read the boot partition size, writing $BOOT_IMG_BYTES bytes anyway."
+fi
+
 if [ -d /data/media/0 ]; then
     BACKUP_DIR="/data/media/0/sakura-ut-backup"
     mkdir -p "$BACKUP_DIR"

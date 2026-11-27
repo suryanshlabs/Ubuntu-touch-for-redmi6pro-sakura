@@ -283,3 +283,8 @@ the 64 MiB boot partition), `images/rootfs.img.gz` 974,286,541 (stored),
 `META-INF/sakura/build.prop` 257. Zip total 1,197,807,377 bytes. Nothing is written to the
 3.0 GiB system partition: the installer touches only `boot` and files under `/data`, so the
 system-image size limit does not apply to this zip.
+
+**[done]** Added a boot-partition size guard: the installer reads the size of the real block
+device behind `/dev/block/by-name/boot` and refuses to write the padded 64 MiB image if the
+partition is smaller, instead of running `dd` past the end into the next partition. An
+unreadable size is reported and the write goes ahead, as before.
