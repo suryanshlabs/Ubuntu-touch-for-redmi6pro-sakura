@@ -224,6 +224,12 @@ all three download URLs (206/200/206), `overlay/`, and every script's syntax pas
 `out/rootfs.img.gz` (~4.2 MiB) already produced by `scripts/make-rootfs-image.sh` with the
 loop-mount fallback.
 
-**[open]** `out/boot.img` and `out/device_sakura.tar.xz` still only come from `build.sh`,
-which needs a root-capable host; the CI runner produces them. `scripts/build-zip.sh` is
-therefore still unproven — it is the next thing to watch in the run.
+**[done]** The pipeline is green end to end. Run `45884507357` on `baaaf94` completed all
+16 steps, including `scripts/build-zip.sh`, and published the `continuous-build` prerelease
+carrying `sakura-ut24.04-halium10-v0.1.0-20261126-baaaf94.zip` (1,197,970,970 bytes), its
+`.sha256` and its `.buildinfo`, alongside the `sakura-boot-*` and `ubuntu-touch-sakura-*`
+workflow artifacts. `out/boot.img` and `out/device_sakura.tar.xz` are produced on the runner,
+which is where `build.sh` gets the root it needs.
+
+**[open]** Nothing has been flashed on hardware yet, so backlog item 1 is done and items 2-6
+(initramfs bring-up, full install, per-feature bring-up) are the remaining work.
