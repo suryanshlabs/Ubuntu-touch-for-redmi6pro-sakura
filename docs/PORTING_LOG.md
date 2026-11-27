@@ -204,3 +204,26 @@ kernel.
    `device/halium.config` or a patch applied by `scripts/prepare-kernel-config.sh`.
 6. When everything works: switch SELinux to enforcing, remove `androidboot.selinux=permissive`,
    and open a merge request to `ubports/installer-configs` for a `sakura.yml`.
+
+---
+
+## 2026-11-27 — push divergence cleared, build re-triggered
+
+**[done]** Diagnosed why CI would not re-trigger. Two trigger commits existed with the same
+parent: `bcb3e9d` ("trigger: rebuild from scratch") on the remote
+`freebuff/07cc3f02731395fc0c4c55a0` branch and `df447f1` ("second workflow trigger")
+locally. They differed only in the placeholder `.workflow_trigger*` files, but a
+non-fast-forward push is rejected, so nothing reached GitHub and no run started. The branch
+has been rebuilt as a clean fast-forward on top of `main` (`baaaf94`), and the placeholder
+trigger files are gone — a normal commit is now the trigger.
+
+**[done]** `./scripts/preflight.sh` re-run on this tree: deviceinfo keys, kernel repository,
+all three download URLs (206/200/206), `overlay/`, and every script's syntax pass.
+
+**[done]** Local build state carried over: `out/rootfs.img` (4 GiB ext4) and
+`out/rootfs.img.gz` (~4.2 MiB) already produced by `scripts/make-rootfs-image.sh` with the
+loop-mount fallback.
+
+**[open]** `out/boot.img` and `out/device_sakura.tar.xz` still only come from `build.sh`,
+which needs a root-capable host; the CI runner produces them. `scripts/build-zip.sh` is
+therefore still unproven — it is the next thing to watch in the run.
