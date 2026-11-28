@@ -346,3 +346,20 @@ writes them.
 Also: `META-INF/sakura/build.prop` reports the real `sakura.build.bootimg_bytes` (it used to
 report the padded 64 MiB), and `docs/INSTALL_ME.md`, `docs/BUILD_ME.md`, `deviceinfo` and
 `RESEARCH.md` describe the unpadded image.
+
+New release: [Ubuntu Touch 24.04 for Redmi 6 Pro - v0.1.1](https://github.com/suryanshlabs/Ubuntu-touch-for-redmi6pro-sakura/releases/tag/v0.1.1)
+(prerelease: false, marked Latest), tag `v0.1.1` on commit `2a0c50a`, workflow run
+46110551730 green.
+
+Asset `sakura-ut24.04-halium10-v0.1.1-20261128-2a0c50a.zip`, 1,198,036,157 bytes,
+sha256 `ef998524dce92eb9f6daef62ea6b54646d06d33094bdeba4405cbfa8540a31ff`
+(downloaded and checked with `sha256sum -c`). Contents:
+
+* `partitions/boot.img` = **15,917,056 bytes** (15.2 MB, unpadded; v0.1.0 had 67,108,864)
+  — `file` reports "Android bootimg, kernel, ramdisk, page size: 2048"
+* `images/rootfs.img.gz` = 974,564,817
+* `images/android-rootfs.img` = 537,280,512
+* `device_sakura.tar.xz` = 15,293,020
+* `META-INF/sakura/build.prop` = 518 (`bootimg_bytes=15917056`, `rootfs_bytes=4294967296`)
+
+The 15.2 MB image fits a 16, 32 or 64 MiB boot partition, so the size failure cannot recur.
