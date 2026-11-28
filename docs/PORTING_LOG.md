@@ -398,3 +398,14 @@ written and verified with `cmp`, rootfs and GSI written at exactly the manifest 
 directory removed on exit, exit status 0. With a truncated `rootfs.img.gz` the install aborts
 with `Failed to write /data/rootfs.img: gzip: stdin: unexpected end of file`, removes the
 partial image and exits 1.
+
+New release: [Ubuntu Touch 24.04 for Redmi 6 Pro - v0.1.2](https://github.com/suryanshlabs/Ubuntu-touch-for-redmi6pro-sakura/releases/tag/v0.1.2)
+(prerelease: false, marked Latest), tag `v0.1.2` on commit `b4001da`, workflow run
+46113542306 green.
+
+Asset `sakura-ut24.04-halium10-v0.1.2-20261128-b4001da.zip`, 1,198,037,718 bytes,
+sha256 `1f87a50b9c4e9d2dea5b78e9b2e90cc6db4058856f77b439b6f48f1e87121c1a` (downloaded and
+checked). Contents unchanged apart from the installer: `partitions/boot.img` 15,917,056 bytes,
+`images/rootfs.img.gz` 974,566,137, `images/android-rootfs.img` 537,280,512,
+`META-INF/sakura/build.prop` with `version=0.1.2`, `rootfs_bytes=4294967296`,
+`android_rootfs_bytes=537280512`.
