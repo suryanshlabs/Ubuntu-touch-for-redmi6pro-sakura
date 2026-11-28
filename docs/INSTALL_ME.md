@@ -20,7 +20,7 @@ flashing the saved `boot-stock.img` brings Android back.
 | OrangeFox (or TWRP) for sakura | the installer is a recovery zip | `fastboot flash recovery OrangeFox-sakura.img`, then boot straight into recovery |
 | Android 10 firmware (LineageOS 17.1 or stock Android 10) | Halium 10 links against the Android 10 vendor HALs | flash a LineageOS 17.1 build first if the phone runs something newer |
 | `/data` formatted as **ext4** and **not encrypted** | the Halium initramfs mounts `/data` without FBE/FDE support | see step 2 |
-| ~7 GB free in `/data` | rootfs image (~3 GB) + GSI (~1 GB) + headroom | check with `df -h /data` |
+| ~6 GB free in `/data` | rootfs (4 GiB) + GSI (0.5 GiB) + 1 GiB headroom, written once straight from the zip | check with `df -h /data` |
 | A PC with `adb`/`fastboot` | backups and rollback | `sudo apt install android-tools-adb android-tools-fastboot` |
 
 Ubuntu Touch does **not** support FBE-encrypted `/data`. If your Android install uses file
@@ -48,15 +48,18 @@ is lost).
 ```
 [*] Device check passed (sakura)
 [*] /data mounted
-[*] Free space check passed (20480 MiB available, 6246 MiB needed)
-[*] Unpacking images into /data (this takes a minute)...
+[*] Free space check passed (20480 MiB available, 5633 MiB needed)
 [*] Backing up the current boot image to /data/media/0/sakura-ut-backup
 [*] Boot image fits the partition (21504000 of 67108864 bytes, unpadded)
 [*] Flashing Halium boot image to /dev/block/by-name/boot
 [*] Writing /data/rootfs.img (usually 2-4 minutes)...
 [*] Writing /data/android-rootfs.img
+[*] Data written and synced.
 [+] Ubuntu Touch 24.04 for sakura has been installed.
 ```
+
+The same output is saved to `/sdcard/sakura-ut-install.log`, so a failed flash can still be
+diagnosed after recovery scrolls the screen away.
 
 4. Reboot to **system** (not recovery, not bootloader — the first boot must not go through
    fastboot, it would only boot Android's kernel).
@@ -114,7 +117,8 @@ adb shell rm -f /data/rootfs.img /data/android-rootfs.img /data/sakura-ubuntu-to
 | --- | --- |
 | Installer aborts with *"This package is for sakura"* | recovery reports a different codename; create `/tmp/sakura.force` in recovery (`adb shell touch /tmp/sakura.force`) only if you are certain |
 | *"/data is not mounted"* | encrypted `/data` the recovery cannot decrypt, or f2fs — reformat as ext4 |
-| *"Not enough free space"* | `/data` has less than ~7 GB free; delete files or build a smaller rootfs (`ROOTFS_SIZE=3G`) |
+| *"Not enough free space"* | `/data` has less than ~6 GB free; delete files or build a smaller rootfs (`ROOTFS_SIZE=3G`) |
+| Any other abort message | the message quotes the real error, and `/sdcard/sakura-ut-install.log` holds the whole log up to the failure |
 | Installer aborts with *"boot.img is N bytes but the boot partition is only M bytes"* | the boot image is genuinely larger than this phone's boot partition; do not force it — use a release whose `partitions/boot.img` is smaller than M |
 | Boot loop at the Xiaomi logo | wrong boot header version or offsets; rebuild with `deviceinfo_bootimg_header_version="1"` (or `"2"`) and try again |
 | Boot loop after the logo, then recovery | rootfs image missing/corrupt: check `/data/rootfs.img` exists and is ~3 GB |

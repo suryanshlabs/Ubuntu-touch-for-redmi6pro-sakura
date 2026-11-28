@@ -13,21 +13,43 @@
 # Everything is verified before anything is written, and the existing boot image is
 # backed up to /sdcard so the phone can always be returned to Android.
 #
-# NOTE: the zip is unpacked into /data, never into /tmp. On this phone /tmp is a tmpfs
-# of a few hundred MiB, while the payload is ~2 GiB, so unpacking to /tmp always fails
-# with "No space left on device".
+# NOTE: nothing is unpacked into a second copy first. The big images are streamed straight
+# out of the zip into their final file, so the installer needs only rootfs + GSI of free
+# space in /data on top of the zip itself. v0.1.1 unpacked the zip into /data/sakura-ut-install
+# before writing the same data again, which pushed peak usage ~1.5 GB higher than the number
+# its own space check demanded, and died midway through the 4 GiB rootfs write with a single
+# "No space left on device" line.
+#
+# NOTE: /tmp is a tmpfs of a few hundred MiB on this phone, so the payload is never staged
+# there. Small metadata files only.
 
 set -u
 
 OUTFD="/proc/self/fd/$2"
 ZIPFILE="$3"
 
-ui_print() { echo "ui_print $*" > "$OUTFD"; echo "ui_print" > "$OUTFD"; }
+# Written so a failed flash can always be diagnosed afterwards, even when recovery scrolls
+# the on-screen log away. Set once /data is mounted.
+LOG=""
+
+log_line() {
+    if [ -n "$LOG" ]; then
+        printf '%s\n' "$*" >> "$LOG" 2>/dev/null || true
+    fi
+    return 0
+}
+
+ui_print() {
+    echo "ui_print $*" > "$OUTFD" 2>/dev/null || true
+    echo "ui_print" > "$OUTFD" 2>/dev/null || true
+    log_line "$*"
+}
 
 die() {
     ui_print ""
     ui_print "! $*"
     ui_print "! Installation aborted."
+    ui_print "! Full log: ${LOG:-the recovery log}"
     exit 1
 }
 
@@ -62,11 +84,24 @@ fi
 if [ ! -d /data/media ] && [ ! -d /data/lost+found ]; then
     die "/data is not mounted. In recovery, decrypt userdata (enter PIN/pattern) or format it as ext4, then retry."
 fi
+
+if [ -d /data/media/0 ]; then
+    LOG="/data/media/0/sakura-ut-install.log"
+else
+    LOG="/data/sakura-ut-install.log"
+fi
+: > "$LOG" 2>/dev/null || LOG=""
+log_line "installer: $(date -u +%Y-%m-%dT%H:%M:%SZ) zip=$ZIPFILE device=$DEVICE"
 ui_print "[*] /data mounted"
+
+# A read-only /data looks mounted but every write below would fail.
+if ! printf '' >> /data/rootfs.img 2>/dev/null; then
+    die "/data is not writable (read-only mount?). Remount it read-write in recovery and retry."
+fi
 
 WORK="/data/sakura-ut-install"
 rm -rf "$WORK"
-if ! mkdir -p "$WORK/images" "$WORK/partitions"; then
+if ! mkdir -p "$WORK/partitions"; then
     die "Cannot create $WORK"
 fi
 # The exit status of the last command in an EXIT trap becomes the script's exit status.
@@ -79,9 +114,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
+ERR="$WORK/step.err"
+
 # ---------------------------------------------------------------- space check
 # Read the manifest straight out of the zip: the check has to run before anything is
-# unpacked, and `unzip -d` would place it at $WORK/META-INF, not $WORK/meta.
+# written, and the zip cannot be unpacked to read it.
 BUILD_PROP_REL="META-INF/sakura/build.prop"
 BUILD_PROP="$WORK/$BUILD_PROP_REL"
 MANIFEST="$(unzip -p "$ZIPFILE" "$BUILD_PROP_REL" 2>/dev/null || true)"
@@ -94,33 +131,35 @@ case "$ROOTFS_BYTES" in ''|*[!0-9]*) ROOTFS_BYTES=0 ;; esac
 ANDROID_BYTES="$(printf '%s\n' "$MANIFEST" | sed -n 's/^sakura\.build\.android_rootfs_bytes=//p')"
 case "$ANDROID_BYTES" in ''|*[!0-9]*) ANDROID_BYTES=0 ;; esac
 [ "$ANDROID_BYTES" -gt 0 ] || ANDROID_BYTES=1073741824
-# rootfs + Android image + the unpacked copies now in $WORK + 1 GiB headroom
-NEED_KB=$(( (ROOTFS_BYTES + ANDROID_BYTES * 2) / 1024 + 1048576 ))
+# rootfs + GSI are written once, straight from the zip, so that is the real peak. The zip
+# and Android's own files are already counted as used by df. 1 GiB of headroom covers the
+# ext4 metadata, the small metadata files and rounding.
+NEED_KB=$(( (ROOTFS_BYTES + ANDROID_BYTES) / 1024 + 1048576 ))
 AVAIL_KB="$(df -k /data 2>/dev/null | awk 'NR==2 {print $4}')"
 case "$AVAIL_KB" in ''|*[!0-9]*) AVAIL_KB='' ;; esac
 if [ -n "$AVAIL_KB" ]; then
     if [ "$AVAIL_KB" -lt "$NEED_KB" ]; then
-        die "Not enough free space in /data: need $((NEED_KB/1024)) MiB, available $((AVAIL_KB/1024)) MiB."
+        die "Not enough free space in /data: need $((NEED_KB/1024)) MiB, available $((AVAIL_KB/1024)) MiB. Free up space (delete files, or remove an older /data/rootfs.img) and retry."
     fi
     ui_print "[*] Free space check passed ($((AVAIL_KB/1024)) MiB available, $((NEED_KB/1024)) MiB needed)"
 else
     ui_print "[!] Could not read the free space of /data, continuing anyway."
 fi
 
-# ---------------------------------------------------------------- unpack
-ui_print "[*] Unpacking images into /data (this takes a minute)..."
-if ! unzip -o "$ZIPFILE" "partitions/*" "images/*" "META-INF/sakura/*" -d "$WORK" >/dev/null 2>&1; then
-    die "Cannot unpack $ZIPFILE. Is this a valid zip, and is there room in /data?"
-fi
-
+# ---------------------------------------------------------------- check the zip
 BOOT_IMG="$WORK/partitions/boot.img"
-ROOTFS_GZ="$WORK/images/rootfs.img.gz"
-ANDROID_IMG="$WORK/images/android-rootfs.img"
-
+if ! unzip -o "$ZIPFILE" "partitions/boot.img" "$BUILD_PROP_REL" -d "$WORK" >/dev/null 2>"$ERR"; then
+    die "Cannot unpack $ZIPFILE: $(tail -n 2 "$ERR" 2>/dev/null | tr '\n' ' ')"
+fi
 [ -s "$BOOT_IMG" ] || die "boot.img missing from the zip"
-[ -s "$ROOTFS_GZ" ] || die "rootfs.img.gz missing from the zip"
-[ -s "$ANDROID_IMG" ] || die "android-rootfs.img missing from the zip"
+[ -s "$BUILD_PROP" ] || die "META-INF/sakura/build.prop missing from the zip"
 
+# Both big entries are streamed later; make sure they are really in the archive first, so a
+# bad zip fails here instead of halfway through a 4 GiB write.
+for entry in images/rootfs.img.gz images/android-rootfs.img; do
+    unzip -l "$ZIPFILE" "$entry" 2>/dev/null | grep -q "$entry" \
+        || die "$entry missing from the zip"
+done
 
 # ---------------------------------------------------------------- backup boot
 BOOT_PART=""
@@ -157,27 +196,44 @@ if [ -d /data/media/0 ]; then
     mkdir -p "$BACKUP_DIR"
     if [ ! -s "$BACKUP_DIR/boot-stock.img" ]; then
         ui_print "[*] Backing up the current boot image to $BACKUP_DIR"
-        dd if="$BOOT_PART" of="$BACKUP_DIR/boot-stock.img" bs=1M 2>/dev/null || true
+        if ! dd if="$BOOT_PART" of="$BACKUP_DIR/boot-stock.img" bs=1M 2>"$ERR"; then
+            ui_print "[!] Could not back up the boot image: $(tail -n 1 "$ERR" 2>/dev/null)"
+            ui_print "[!] Continuing, but keep your own copy of boot before rebooting."
+        fi
     fi
 fi
 
 # ---------------------------------------------------------------- flash boot
 ui_print "[*] Flashing Halium boot image to $BOOT_PART"
-dd if="$BOOT_IMG" of="$BOOT_PART" bs=1M 2>/dev/null || die "Failed to write the boot image."
+if ! dd if="$BOOT_IMG" of="$BOOT_PART" bs=1M 2>"$ERR"; then
+    die "Failed to write the boot image: $(tail -n 2 "$ERR" 2>/dev/null | tr '\n' ' ')"
+fi
 sync
 
 # ---------------------------------------------------------------- rootfs
+# Streamed out of the zip: one write of rootfs + GSI, no second copy in /data.
 ui_print "[*] Writing /data/rootfs.img (usually 2-4 minutes)..."
 rm -f /data/rootfs.img
-if ! gzip -dc "$ROOTFS_GZ" > /data/rootfs.img; then
+if ! unzip -p "$ZIPFILE" "images/rootfs.img.gz" 2>"$ERR" | gzip -dc > /data/rootfs.img 2>>"$ERR"; then
     rm -f /data/rootfs.img
-    die "Failed to decompress rootfs.img.gz (out of space?)."
+    die "Failed to write /data/rootfs.img: $(tail -n 2 "$ERR" 2>/dev/null | tr '\n' ' ')"
+fi
+WROTE_BYTES="$(wc -c < /data/rootfs.img)"
+if [ "$WROTE_BYTES" -lt "$ROOTFS_BYTES" ]; then
+    rm -f /data/rootfs.img
+    die "/data/rootfs.img is $WROTE_BYTES bytes, expected $ROOTFS_BYTES (out of space or a truncated zip)."
 fi
 sync
 
 ui_print "[*] Writing /data/android-rootfs.img"
 rm -f /data/android-rootfs.img
-cp -f "$ANDROID_IMG" /data/android-rootfs.img || die "Failed to copy android-rootfs.img."
+if ! unzip -p "$ZIPFILE" "images/android-rootfs.img" > /data/android-rootfs.img 2>"$ERR"; then
+    die "Failed to write /data/android-rootfs.img: $(tail -n 2 "$ERR" 2>/dev/null | tr '\n' ' ')"
+fi
+WROTE_BYTES="$(wc -c < /data/android-rootfs.img)"
+if [ "$WROTE_BYTES" -lt "$ANDROID_BYTES" ]; then
+    die "/data/android-rootfs.img is $WROTE_BYTES bytes, expected $ANDROID_BYTES."
+fi
 # Stale images from a previous install would be mounted instead of ours.
 rm -f /data/system.img 2>/dev/null || true
 
@@ -198,6 +254,7 @@ ui_print "      from recovery, or 'fastboot flash boot boot-stock.img' on a PC."
 ui_print ""
 ui_print "  Single-boot: Android will not boot until you flash boot-stock.img back."
 ui_print "  Its files in /data are untouched."
+ui_print "  Install log saved to ${LOG:-the recovery log}"
 ui_print ""
 ui_print "*********************************************"
 

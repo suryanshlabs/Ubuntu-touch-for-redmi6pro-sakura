@@ -363,3 +363,38 @@ sha256 `ef998524dce92eb9f6daef62ea6b54646d06d33094bdeba4405cbfa8540a31ff`
 * `META-INF/sakura/build.prop` = 518 (`bootimg_bytes=15917056`, `rootfs_bytes=4294967296`)
 
 The 15.2 MB image fits a 16, 32 or 64 MiB boot partition, so the size failure cannot recur.
+
+---
+
+### v0.1.2 - installer writes the images straight out of the zip
+
+Second hardware test (v0.1.1 zip) got past the boot step, then stopped somewhere in the middle
+of the on-screen log with a large error. The log line itself was not captured, so the cause
+had to be found by reading the installer.
+
+**[bug]** `update-binary` unpacked `images/rootfs.img.gz` and `images/android-rootfs.img` into
+`/data/sakura-ut-install` first and then wrote `/data/rootfs.img` and `/data/android-rootfs.img`
+from those copies. Peak use of `/data` was therefore rootfs (4 GiB) + GSI (0.5 GiB) + the
+unpacked copies (1.5 GB) - about 1.5 GB more than the space check demanded (it required 6 GiB).
+A phone whose `/data` has between 6 and 7.5 GB free passed the check and then died partway
+through the 4 GiB write, which recovery shows as one very long `No space left on device` /
+`gzip: unexpected end of file` line.
+
+**[fixed]** Nothing is staged any more: `rootfs.img.gz` is piped through `gzip -dc` from the
+zip into `/data/rootfs.img`, and `android-rootfs.img` is streamed out of the zip into place, so
+both images are written once (~4.5 GiB peak). The space check now asks for exactly that plus
+1 GiB of headroom and reports both numbers, and the resulting files are size-checked against
+the manifest after writing, so a short write is caught instead of silently leaving a corrupt
+image behind.
+
+**[fixed]** Failures are no longer silent. Every `dd`, `gzip` and `unzip` error is captured and
+quoted in the abort message, `/data` is write-tested before anything is written, both big
+entries are checked to exist in the zip up front, and the entire install log is saved to
+`/sdcard/sakura-ut-install.log` (shown in the last lines of the recovery output), so the next
+failed flash can be diagnosed from the file instead of a photograph of the screen.
+
+Simulated end-to-end against a stand-in zip (small rootfs/GSI, fake boot partition): boot image
+written and verified with `cmp`, rootfs and GSI written at exactly the manifest sizes, work
+directory removed on exit, exit status 0. With a truncated `rootfs.img.gz` the install aborts
+with `Failed to write /data/rootfs.img: gzip: stdin: unexpected end of file`, removes the
+partial image and exits 1.
