@@ -17,7 +17,7 @@ on:
       port_version:
         description: 'Port version embedded in the artifact name'
         required: false
-        default: '0.1.0'
+        default: '0.1.1'
 
 permissions:
   contents: write
@@ -27,7 +27,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PORT_VERSION: ${{ inputs.port_version || '0.1.0' }}
+  PORT_VERSION: ${{ inputs.port_version || '0.1.1' }}
 
 jobs:
   build:
@@ -144,6 +144,10 @@ jobs:
 
             Requirements: unlocked bootloader, OrangeFox/TWRP for sakura, Android 10 firmware,
             `/data` ext4 and unencrypted, ~7 GB free in `/data`.
+
+            The boot image in this zip is written **unpadded** (~20 MB). Earlier builds padded it
+            to the 64 MiB the device tree declares, which some sakura units reject as too large
+            for their boot partition; that padding is gone.
 
             * flash the `.zip` from OrangeFox / TWRP, then reboot to **system**
             * first boot takes 5-10 minutes with a dark screen

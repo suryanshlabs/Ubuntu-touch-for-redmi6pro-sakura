@@ -324,3 +324,25 @@ Archive contents (verified by unzipping the downloaded file):
 Workflow: workflow body now says the zip is a single-boot install (no dual-boot menu; Android
 stops booting), lists prerequisites, and points to the rollback + `docs/INSTALL_ME.md`; the
 `continuous-build` entry stays a pre-release.
+
+---
+
+### v0.1.1 - boot image no longer padded to 64 MiB
+
+First hardware test of v0.1.0 stopped at the boot step: the installer refused to write
+`partitions/boot.img` because the image was larger than the boot partition reported by the
+phone ("size limit"). Cause: `scripts/build-zip.sh` padded the ~20 MB Halium boot image up to
+`BOARD_BOOTIMAGE_PARTITION_SIZE` (67,108,864 bytes / 64 MiB) with `truncate`, on the assumption
+that every sakura unit exposes a full 64 MiB boot partition. Real units can expose a smaller
+one, and a padded image then cannot be written at all.
+
+**[fixed]** The padding is gone: the zip now carries the real boot image. 64 MiB is only used
+as an upper bound (the build fails if the real image somehow exceeds it), and the recovery
+installer still checks the actual block-device size before `dd` and refuses with both byte
+counts if it does not fit. Trailing bytes left over from the previous, larger boot image are
+harmless: the bootloader reads the image by the sizes in its header, and the build no longer
+writes them.
+
+Also: `META-INF/sakura/build.prop` reports the real `sakura.build.bootimg_bytes` (it used to
+report the padded 64 MiB), and `docs/INSTALL_ME.md`, `docs/BUILD_ME.md`, `deviceinfo` and
+`RESEARCH.md` describe the unpadded image.

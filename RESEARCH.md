@@ -151,7 +151,7 @@ device-tree/Halium-CI keys; the table maps them.
 | — | `deviceinfo_flash_offset_kernel` | `0x00008000` | default, base+0x8000 = `0x80008000` |
 | — | `deviceinfo_flash_offset_ramdisk` | `0x01000000` | `--ramdisk_offset` |
 | — | `deviceinfo_flash_offset_tags` | `0x00000100` | `--tags_offset` |
-| — | `deviceinfo_bootimg_partition_size` | **not set** | setting it makes `make-bootimage.sh` call `avbtool` without a key; `scripts/build-zip.sh` pads boot.img to the 64 MiB partition itself |
+| — | `deviceinfo_bootimg_partition_size` | **not set** | setting it makes `make-bootimage.sh` call `avbtool` without a key; `scripts/build-zip.sh` ships the unpadded boot image and only treats 64 MiB as an upper bound |
 | — | `deviceinfo_prebuilt_boot_ramdisk_source` | Halium `continuous` arm64 initrd | non-dynparts, see §7 |
 | — | `deviceinfo_rootfs_image_sector_size` | `4096` | eMMC logical sector size |
 | — | `deviceinfo_system_partition_size` | `4096M` | rootfs image size cap (system is only 3.0 GiB, hence /data install) |

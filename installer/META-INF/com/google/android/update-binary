@@ -129,9 +129,11 @@ for p in /dev/block/by-name/boot /dev/block/bootdevice/by-name/boot; do
 done
 [ -n "$BOOT_PART" ] || die "boot partition not found."
 
-# build-zip.sh pads boot.img to exactly BOARD_BOOTIMAGE_PARTITION_SIZE (64 MiB). If this
-# phone's boot partition were smaller, dd would write past its end into whatever follows,
-# so verify the size first and refuse instead of guessing.
+# build-zip.sh ships the real boot.img (~15-25 MB), never padded to the 64 MiB the device
+# tree declares: some sakura units have a smaller boot partition, and the padded image made
+# the flash fail with a size error. Because the image is not padded, a partition that is
+# smaller than the image would mean it really does not fit, so verify the size first and
+# refuse instead of writing past the end of the partition.
 BOOT_IMG_BYTES="$(wc -c < "$BOOT_IMG")"
 BOOT_NODE=""
 if command -v readlink >/dev/null 2>&1; then
@@ -143,9 +145,9 @@ case "$BOOT_SECTORS" in ''|*[!0-9]*) BOOT_SECTORS='' ;; esac
 if [ -n "$BOOT_SECTORS" ]; then
     BOOT_PART_BYTES=$((BOOT_SECTORS * 512))
     if [ "$BOOT_IMG_BYTES" -gt "$BOOT_PART_BYTES" ]; then
-        die "boot.img is $BOOT_IMG_BYTES bytes but the boot partition is $BOOT_PART_BYTES bytes."
+        die "boot.img is $BOOT_IMG_BYTES bytes but the boot partition is only $BOOT_PART_BYTES bytes."
     fi
-    ui_print "[*] Boot image fits the partition ($BOOT_IMG_BYTES of $BOOT_PART_BYTES bytes)"
+    ui_print "[*] Boot image fits the partition ($BOOT_IMG_BYTES of $BOOT_PART_BYTES bytes, unpadded)"
 else
     ui_print "[!] Could not read the boot partition size, writing $BOOT_IMG_BYTES bytes anyway."
 fi

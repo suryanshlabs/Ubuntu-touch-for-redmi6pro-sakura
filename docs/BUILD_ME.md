@@ -105,7 +105,7 @@ Expected output, near the end:
 
 ```
 out/device_sakura.tar.xz             ~30 MB
-out/boot.img                         ~18-22 MB (64 MiB partition, padded)
+out/boot.img                         ~18-22 MB (boot partition upper bound 64 MiB; NOT padded)
 ```
 
 Add ~30-60 min of compile time on 4 cores for the first run; later runs reuse

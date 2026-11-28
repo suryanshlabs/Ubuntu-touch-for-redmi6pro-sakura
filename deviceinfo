@@ -93,9 +93,11 @@ deviceinfo_bootimg_os_patch_level="2021-07-01"
 
 # deviceinfo_bootimg_partition_size is deliberately NOT set. When it is set,
 # make-bootimage.sh runs `avbtool add_hash_footer` on boot.img, which needs a key
-# this port does not have, and pads the image through AVB. scripts/build-zip.sh
-# pads boot.img to the 64 MiB partition itself instead (truncate), which needs no
-# key and no AVB metadata.
+# this port does not have, and pads the image through AVB. scripts/build-zip.sh ships
+# the raw boot image unpadded instead: 64 MiB is only the upper bound from
+# BOARD_BOOTIMAGE_PARTITION_SIZE, and real sakura phones can report a smaller boot
+# partition, which made the padded v0.1.0 image fail to flash (docs/PORTING_LOG.md).
+# The recovery installer checks the real partition size before writing.
 
 # Halium 10 generic boot ramdisk (non-dynparts: sakura has dedicated system/vendor partitions)
 deviceinfo_prebuilt_boot_ramdisk_source="https://github.com/halium/initramfs-tools-halium/releases/download/continuous/initrd.img-touch-arm64"

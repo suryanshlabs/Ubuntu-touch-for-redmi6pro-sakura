@@ -22,14 +22,17 @@ cd "$ROOT"
 OUT_DIR="${OUT_DIR:-$ROOT/out}"
 WORKDIR="${WORKDIR:-$ROOT/workdir}"
 DIST_DIR="${DIST_DIR:-$ROOT/dist}"
-PORT_VERSION="${PORT_VERSION:-0.1.0}"
+PORT_VERSION="${PORT_VERSION:-0.1.1}"
 DEVICE="sakura"
 UT_RELEASE="ut24.04"
 HALIUM="halium10"
 
-# Must match the boot partition size in the Android device tree
-# (BOARD_BOOTIMAGE_PARTITION_SIZE := 67108864). The image is padded to this size so the
-# recovery can dd it straight onto the partition without leaving old bytes behind.
+# Upper bound from the Android device tree (BOARD_BOOTIMAGE_PARTITION_SIZE := 67108864).
+# The image is NOT padded up to it: on real sakura units the boot partition can be smaller
+# than the 64 MiB the device tree declares, and a 64 MiB write is then refused (or fails
+# with "No space left on device"), which is exactly what the first v0.1.0 release did.
+# The boot image itself is only ~15-25 MB and the bootloader reads it by the sizes in its
+# header, so trailing bytes left over from the previous image are harmless.
 BOOT_PARTITION_SIZE="${BOOT_PARTITION_SIZE:-67108864}"
 
 # GitHub refuses release assets larger than 2 GiB.
@@ -80,12 +83,10 @@ chmod 755 "$STAGE/META-INF/com/google/android/update-binary"
 
 cp -f "$BOOT_IMG" "$STAGE/partitions/boot.img"
 BOOT_BYTES="$(stat -c%s "$STAGE/partitions/boot.img")"
-if [ "$BOOT_BYTES" -lt "$BOOT_PARTITION_SIZE" ]; then
-    echo "==> Padding boot.img from $BOOT_BYTES to $BOOT_PARTITION_SIZE bytes (64 MiB partition)"
-    truncate -s "$BOOT_PARTITION_SIZE" "$STAGE/partitions/boot.img"
-elif [ "$BOOT_BYTES" -gt "$BOOT_PARTITION_SIZE" ]; then
-    fail "boot.img is $BOOT_BYTES bytes, larger than the ${BOOT_PARTITION_SIZE} byte partition"
+if [ "$BOOT_BYTES" -gt "$BOOT_PARTITION_SIZE" ]; then
+    fail "boot.img is $BOOT_BYTES bytes, larger than the ${BOOT_PARTITION_SIZE} byte boot partition"
 fi
+echo "==> boot.img: $BOOT_BYTES bytes, written unpadded (boot partition upper bound $BOOT_PARTITION_SIZE)"
 
 echo "==> Unpacking Halium 10 GSI"
 tar -xJf "$GSI_TAR" -C "$STAGE/images"
@@ -138,7 +139,7 @@ sakura.build.codename=${deviceinfo_codename}
 sakura.build.halium_version=${deviceinfo_halium_version}
 sakura.build.rootfs_bytes=${ROOTFS_BYTES}
 sakura.build.android_rootfs_bytes=${ANDROID_BYTES}
-sakura.build.bootimg_bytes=${BOOT_PARTITION_SIZE}
+sakura.build.bootimg_bytes=${BOOT_BYTES}
 sakura.build.installer=${ZIP_NAME}
 MANIFEST
 

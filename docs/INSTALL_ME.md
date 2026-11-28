@@ -51,7 +51,7 @@ is lost).
 [*] Free space check passed (20480 MiB available, 6246 MiB needed)
 [*] Unpacking images into /data (this takes a minute)...
 [*] Backing up the current boot image to /data/media/0/sakura-ut-backup
-[*] Boot image fits the partition (67108864 of 67108864 bytes)
+[*] Boot image fits the partition (21504000 of 67108864 bytes, unpadded)
 [*] Flashing Halium boot image to /dev/block/by-name/boot
 [*] Writing /data/rootfs.img (usually 2-4 minutes)...
 [*] Writing /data/android-rootfs.img
@@ -115,6 +115,7 @@ adb shell rm -f /data/rootfs.img /data/android-rootfs.img /data/sakura-ubuntu-to
 | Installer aborts with *"This package is for sakura"* | recovery reports a different codename; create `/tmp/sakura.force` in recovery (`adb shell touch /tmp/sakura.force`) only if you are certain |
 | *"/data is not mounted"* | encrypted `/data` the recovery cannot decrypt, or f2fs — reformat as ext4 |
 | *"Not enough free space"* | `/data` has less than ~7 GB free; delete files or build a smaller rootfs (`ROOTFS_SIZE=3G`) |
+| Installer aborts with *"boot.img is N bytes but the boot partition is only M bytes"* | the boot image is genuinely larger than this phone's boot partition; do not force it — use a release whose `partitions/boot.img` is smaller than M |
 | Boot loop at the Xiaomi logo | wrong boot header version or offsets; rebuild with `deviceinfo_bootimg_header_version="1"` (or `"2"`) and try again |
 | Boot loop after the logo, then recovery | rootfs image missing/corrupt: check `/data/rootfs.img` exists and is ~3 GB |
 | Black screen, `adb` works, no UI | Mir/Adreno problem — check `adb shell systemctl status lomiri` and `journalctl -b` |
@@ -125,8 +126,8 @@ adb shell rm -f /data/rootfs.img /data/android-rootfs.img /data/sakura-ubuntu-to
 
 | Path | Size | What |
 | --- | --- | --- |
-| `/dev/block/by-name/boot` | 64 MiB | Halium kernel + initramfs (replaces Android's boot) |
+| `/dev/block/by-name/boot` | up to 64 MiB | Halium kernel + initramfs (replaces Android's boot); the image is ~20 MB and is written unpadded |
 | `/data/rootfs.img` | ~3 GB | Ubuntu Touch rootfs, ext4 |
 | `/data/android-rootfs.img` | ~1 GB | Halium 10 GSI (Android rootfs, mounted at `/android`) |
 | `/data/sakura-ubuntu-touch-build.prop` | few bytes | build identification |
-| `/sdcard/sakura-ut-backup/boot-stock.img` | 64 MiB | original Android boot image |
+| `/sdcard/sakura-ut-backup/boot-stock.img` | 64 MiB | original Android boot image (whole partition, as read from the phone) |
